@@ -1,0 +1,599 @@
+import { useRef, useState } from "react";
+import {
+  Tag,
+  UserCog,
+  Database,
+  Bell,
+  Palette,
+  Plus,
+  RotateCcw,
+  Trash2,
+  X,
+  Download,
+  Upload,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { useInventory } from "../context/InventoryContext";
+import { CATEGORIES } from "../types";
+import Avatar from "../components/Avatar";
+import { csvTemplate, downloadCSV, parseInventoryCSV } from "../lib/csv";
+
+const sections = [
+  { id: "users", label: "Staff & PINs", icon: UserCog },
+  { id: "categories", label: "Categories", icon: Tag },
+  { id: "database", label: "Database", icon: Database },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "theme", label: "Theme", icon: Palette },
+];
+
+export default function SettingsPage() {
+  const [activeSection, setActiveSection] = useState("users");
+  const { staffList, addStaff, resetPin, deleteStaff, currentStaff } =
+    useAuth();
+  const { items, logs, usingMockData, addItem } = useInventory();
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [newRole, setNewRole] = useState<"admin" | "staff">("staff");
+  const [formError, setFormError] = useState("");
+
+  const [resetTargetId, setResetTargetId] = useState<string | null>(null);
+  const [resetPinValue, setResetPinValue] = useState("");
+
+  const [deleteStaffTarget, setDeleteStaffTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [deletingStaff, setDeletingStaff] = useState(false);
+  const [deleteStaffError, setDeleteStaffError] = useState("");
+
+  const [bulkImportBusy, setBulkImportBusy] = useState(false);
+  const [bulkImportResult, setBulkImportResult] = useState<{
+    added: number;
+    errors: string[];
+  } | null>(null);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleDownloadTemplate() {
+    downloadCSV("inventory-template.csv", csvTemplate());
+  }
+
+  function handleBulkImportClick() {
+    setBulkImportResult(null);
+    bulkFileInputRef.current?.click();
+  }
+
+  async function handleBulkFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setBulkImportBusy(true);
+    setBulkImportResult(null);
+    const text = await file.text();
+    const { rows, errors } = parseInventoryCSV(text);
+
+    let added = 0;
+    for (const row of rows) {
+      const result = await addItem({ ...row, image: null });
+      if (result.ok) added++;
+      else errors.push(`"${row.name}": ${result.message || "failed to add."}`);
+    }
+
+    setBulkImportBusy(false);
+    setBulkImportResult({ added, errors });
+  }
+
+  async function handleAddStaff() {
+    if (!newName.trim()) {
+      setFormError("Enter a name.");
+      return;
+    }
+    const result = await addStaff(newName.trim(), newPin, newRole);
+    if (!result.ok) {
+      setFormError(result.message || "Could not add staff.");
+      return;
+    }
+    setShowAdd(false);
+    setNewName("");
+    setNewPin("");
+    setNewRole("staff");
+    setFormError("");
+  }
+
+  async function handleResetPin() {
+    if (!resetTargetId) return;
+    const result = await resetPin(resetTargetId, resetPinValue);
+    if (result.ok) {
+      setResetTargetId(null);
+      setResetPinValue("");
+    }
+  }
+
+  async function handleDeleteStaff() {
+    if (!deleteStaffTarget) return;
+    if (deleteStaffTarget.id === currentStaff?.id) {
+      setDeleteStaffError(
+        "You can't delete the account you're currently logged in as.",
+      );
+      return;
+    }
+    const target = staffList.find((s) => s.id === deleteStaffTarget.id);
+    const adminCount = staffList.filter((s) => s.role === "admin").length;
+    if (target?.role === "admin" && adminCount <= 1) {
+      setDeleteStaffError(
+        "You can't delete the last remaining admin account — the app needs at least one admin.",
+      );
+      return;
+    }
+    setDeletingStaff(true);
+    setDeleteStaffError("");
+    const result = await deleteStaff(deleteStaffTarget.id);
+    setDeletingStaff(false);
+    if (!result.ok) {
+      setDeleteStaffError(
+        result.message || "Could not delete this staff account.",
+      );
+      return;
+    }
+    setDeleteStaffTarget(null);
+  }
+
+  return (
+    <div className="flex h-full">
+      <div className="w-52 border-r border-border p-4 space-y-1">
+        {sections.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setActiveSection(s.id)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition-colors ${
+              activeSection === s.id
+                ? "bg-accent text-primary"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            }`}
+          >
+            <s.icon className="w-4 h-4" />
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 p-6 overflow-y-auto">
+        {activeSection === "users" && (
+          <div className="max-w-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-foreground text-lg">
+                Staff & PINs
+              </h3>
+              <button
+                onClick={() => setShowAdd(true)}
+                className="flex items-center gap-2 bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Staff
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Each person signs in with their name and their own PIN — that's
+              what attributes every borrow and turn-back to the right person.
+            </p>
+            <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+              <div className="divide-y divide-border">
+                {staffList.map((s) => (
+                  <div key={s.id} className="flex items-center gap-3 px-4 py-3">
+                    <Avatar name={s.name} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground">
+                        {s.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground capitalize">
+                        {s.role}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setDeleteStaffTarget({ id: s.id, name: s.name });
+                        setDeleteStaffError("");
+                      }}
+                      className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                      title="Delete staff"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setResetTargetId(s.id);
+                        setResetPinValue("");
+                      }}
+                      className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Reset PIN"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                {staffList.length === 0 && (
+                  <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    No staff yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeSection === "categories" && (
+          <div className="max-w-xl space-y-5">
+            <h3 className="font-semibold text-foreground text-lg">
+              Categories
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              These four categories are fixed in the schema (kept simple on
+              purpose). To add a new one, your developer adds it to the
+              `category` check constraint in{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                schema.sql
+              </code>{" "}
+              and the
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                CATEGORIES
+              </code>{" "}
+              map in{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                types.ts
+              </code>
+              .
+            </p>
+            <div className="bg-card rounded-xl border border-border shadow-sm divide-y divide-border">
+              {(Object.keys(CATEGORIES) as Array<keyof typeof CATEGORIES>).map(
+                (key) => (
+                  <div key={key} className="flex items-center gap-3 px-4 py-3">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: CATEGORIES[key].text }}
+                    />
+                    <span className="text-sm font-medium text-foreground">
+                      {CATEGORIES[key].label}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {items.filter((i) => i.category === key).length} items
+                    </span>
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeSection === "database" && (
+          <div className="max-w-xl space-y-5">
+            <h3 className="font-semibold text-foreground text-lg">Database</h3>
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
+              {usingMockData ? (
+                <div className="flex items-center gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                  <span className="text-sm font-medium text-yellow-700">
+                    Running on local demo data — add your Supabase keys to .env
+                    to connect a real database.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-sm font-medium text-green-700">
+                    Connected to Supabase
+                  </span>
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-muted/50 rounded-lg py-3">
+                  <div className="text-xl font-bold text-foreground">
+                    {items.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Items</div>
+                </div>
+                <div className="bg-muted/50 rounded-lg py-3">
+                  <div className="text-xl font-bold text-foreground">
+                    {logs.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Log entries
+                  </div>
+                </div>
+                <div className="bg-muted/50 rounded-lg py-3">
+                  <div className="text-xl font-bold text-foreground">
+                    {staffList.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Staff accounts
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">
+                  Bulk Import Items
+                </h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Download the template, fill it in with your items (name,
+                  category, stock, unit, min/max stock, location, supplier,
+                  description), then upload it here to add them all at once. The
+                  Export button on the Inventory page produces a file in this
+                  same format.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadTemplate}
+                  className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted/50 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download Template
+                </button>
+                <input
+                  ref={bulkFileInputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleBulkFileChange}
+                />
+                <button
+                  onClick={handleBulkImportClick}
+                  disabled={bulkImportBusy}
+                  className="flex items-center gap-2 bg-primary text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  <Upload className="w-3.5 h-3.5" />{" "}
+                  {bulkImportBusy ? "Importing…" : "Upload Filled Template"}
+                </button>
+              </div>
+              {bulkImportResult && (
+                <div
+                  className={`rounded-lg border px-4 py-3 text-xs flex items-start gap-2 ${
+                    bulkImportResult.errors.length
+                      ? "bg-yellow-50 border-yellow-200 text-yellow-800"
+                      : "bg-green-50 border-green-200 text-green-700"
+                  }`}
+                >
+                  {bulkImportResult.errors.length ? (
+                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  )}
+                  <div className="flex-1">
+                    <div className="font-medium">
+                      {bulkImportResult.added} item
+                      {bulkImportResult.added === 1 ? "" : "s"} imported
+                      successfully.
+                    </div>
+                    {bulkImportResult.errors.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                        {bulkImportResult.errors.map((e, i) => (
+                          <li key={i}>{e}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setBulkImportResult(null)}
+                    className="p-0.5 hover:opacity-70"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeSection === "notifications" && (
+          <div className="max-w-xl space-y-5">
+            <h3 className="font-semibold text-foreground text-lg">
+              Notification Settings
+            </h3>
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Not wired up yet — this is a placeholder for when email/SMS
+                alerts get added later.
+              </p>
+              {["Low stock alerts", "New borrow requests", "Overdue items"].map(
+                (label) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                  >
+                    <span className="text-sm text-foreground">{label}</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        defaultChecked
+                        disabled
+                      />
+                      <div className="w-10 h-5 bg-muted peer-checked:bg-primary rounded-full opacity-50" />
+                      <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-5 transition-all" />
+                    </label>
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeSection === "theme" && (
+          <div className="max-w-xl space-y-5">
+            <h3 className="font-semibold text-foreground text-lg">Theme</h3>
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+              <p className="text-sm text-muted-foreground">
+                Colors are set in{" "}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                  src/index.css
+                </code>{" "}
+                — they match your Figma design exactly (brand red{" "}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                  #C8102E
+                </code>
+                ).
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Add staff modal */}
+      {showAdd && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowAdd(false)}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-semibold text-foreground">
+                Add Staff
+              </h3>
+              <button
+                onClick={() => setShowAdd(false)}
+                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Name
+                </label>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Full name"
+                  className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  PIN (4–6 digits)
+                </label>
+                <input
+                  value={newPin}
+                  onChange={(e) =>
+                    setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  inputMode="numeric"
+                  placeholder="••••"
+                  className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Role
+                </label>
+                <select
+                  value={newRole}
+                  onChange={(e) =>
+                    setNewRole(e.target.value as "admin" | "staff")
+                  }
+                  className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                >
+                  <option value="staff">Staff</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              {formError && (
+                <p className="text-xs text-destructive">{formError}</p>
+              )}
+              <button
+                onClick={handleAddStaff}
+                className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Add Staff
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset PIN modal */}
+      {resetTargetId && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setResetTargetId(null)}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-foreground mb-4">
+              Reset PIN
+            </h3>
+            <input
+              value={resetPinValue}
+              onChange={(e) =>
+                setResetPinValue(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              inputMode="numeric"
+              placeholder="New PIN"
+              className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            />
+            <button
+              onClick={handleResetPin}
+              className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              Save new PIN
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete staff modal */}
+      {deleteStaffTarget && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setDeleteStaffTarget(null)}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Delete staff account?
+            </h3>
+            <p className="text-sm text-muted-foreground mb-5">
+              This will permanently remove{" "}
+              <span className="font-medium text-foreground">
+                {deleteStaffTarget.name}
+              </span>
+              's login. Their past pull-out and restock history stays intact —
+              this only removes their ability to sign in. This can't be undone.
+            </p>
+            {deleteStaffError && (
+              <p className="text-xs text-destructive mb-4">
+                {deleteStaffError}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteStaffTarget(null)}
+                className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteStaff}
+                disabled={deletingStaff}
+                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deletingStaff ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
