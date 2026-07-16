@@ -27,7 +27,7 @@ export default function EmployeesPage({
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <div className="flex items-center gap-3 mb-2">
         <div className="relative max-w-xs flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -65,7 +65,7 @@ export default function EmployeesPage({
       </p>
 
       {view === "cards" ? (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {filtered.map((s) => {
             const stat = stats(s.name);
             return (
@@ -104,13 +104,57 @@ export default function EmployeesPage({
             );
           })}
           {filtered.length === 0 && (
-            <div className="col-span-4 py-12 text-center text-sm text-muted-foreground">
+            <div className="col-span-full py-12 text-center text-sm text-muted-foreground">
               No staff accounts found.
             </div>
           )}
         </div>
       ) : (
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        <>
+        {/* Mobile card list */}
+        <div className="md:hidden space-y-2">
+          {filtered.map((s) => {
+            const stat = stats(s.name);
+            return (
+              <div
+                key={s.id}
+                className="bg-card rounded-xl border border-border shadow-sm p-3 flex items-center gap-3"
+              >
+                <Avatar name={s.name} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-foreground">
+                    {s.name}
+                  </div>
+                  <div className="text-xs text-muted-foreground capitalize">
+                    {s.role}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-sm font-semibold text-foreground">
+                    {stat.borrowed}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      pulled out
+                    </span>
+                  </div>
+                  {stat.active > 0 ? (
+                    <div className="text-xs text-primary font-semibold">
+                      {stat.active} active
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">—</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              No staff accounts found.
+            </div>
+          )}
+        </div>
+
+        <div className="hidden md:block bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
@@ -172,6 +216,7 @@ export default function EmployeesPage({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

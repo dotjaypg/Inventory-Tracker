@@ -86,8 +86,8 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
   const canSave = name.trim().length > 0 && unit.trim().length > 0;
 
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="grid grid-cols-2 gap-6">
+    <div className="p-4 md:p-6 max-w-4xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3">
             Item photo
@@ -184,7 +184,7 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
                 Pricing &amp; Pull-Out Bundling{" "}
                 <span className="normal-case font-normal">(optional)</span>
               </h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
                     Pack price (₱)
@@ -309,7 +309,7 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   Locker

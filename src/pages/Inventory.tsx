@@ -108,7 +108,7 @@ export default function Inventory({
 
   return (
     <div className="flex h-full">
-      <div className="flex-1 p-6 min-w-0">
+      <div className="flex-1 p-4 md:p-6 min-w-0">
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <div className="relative max-w-xs flex-1 min-w-[180px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -144,7 +144,7 @@ export default function Inventory({
               </button>
             )}
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="w-full sm:w-auto sm:ml-auto flex items-center gap-2 flex-wrap">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -168,13 +168,15 @@ export default function Inventory({
               className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors disabled:opacity-50"
             >
               <Upload className="w-4 h-4" />{" "}
-              {importBusy ? "Importing…" : "Import"}
+              <span className="hidden sm:inline">
+                {importBusy ? "Importing…" : "Import"}
+              </span>
             </button>
             <button
               onClick={handleExport}
               className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors"
             >
-              <Download className="w-4 h-4" /> Export
+              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export</span>
             </button>
             <button
               onClick={() => setPage("Add Item")}
@@ -220,7 +222,82 @@ export default function Inventory({
           </div>
         )}
 
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        {/* Mobile card list */}
+        <div className="md:hidden space-y-3">
+          {filtered.map((item) => (
+            <div
+              key={item.id}
+              onClick={() => setSelectedItem(item)}
+              className="bg-card rounded-xl border border-border shadow-sm p-4 active:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <ItemIcon
+                  name={item.name}
+                  category={item.category}
+                  image={item.image}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {item.name}
+                    </span>
+                    <StatusBadge status={getStockStatus(item)} />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {CATEGORIES[item.category].label}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+                    <span>
+                      <span className="font-semibold text-foreground">
+                        {item.stock}
+                      </span>{" "}
+                      {item.unit}
+                    </span>
+                    <span>{item.location}</span>
+                    <span>{item.lastUpdated}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 mt-3 pt-3 border-t border-border justify-end">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedItem(item);
+                  }}
+                  className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingItem(item);
+                  }}
+                  className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteConfirmItem(item);
+                  }}
+                  className="p-2 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="py-12 text-center text-muted-foreground text-sm">
+              No items found matching your filters.
+            </div>
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
@@ -327,7 +404,7 @@ export default function Inventory({
       </div>
 
       {selectedItem && (
-        <div className="w-80 border-l border-border bg-card flex flex-col">
+        <div className="fixed inset-0 z-40 md:z-auto md:static md:inset-auto w-full md:w-80 border-l border-border bg-card flex flex-col">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border">
             <h3 className="font-semibold text-foreground">Item Details</h3>
             <button

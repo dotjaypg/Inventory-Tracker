@@ -64,7 +64,7 @@ export default function RestockPage() {
   }
 
   return (
-    <div className="p-6 flex gap-6 h-full">
+    <div className="p-4 md:p-6 flex flex-col md:flex-row gap-6 h-full">
       {/* Left: item picker */}
       <div className="flex-1 min-w-0">
         <div className="relative max-w-sm mb-4">
@@ -77,7 +77,44 @@ export default function RestockPage() {
           />
         </div>
 
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mb-6">
+        {/* Mobile card list */}
+        <div className="md:hidden space-y-2 mb-6">
+          {browseItems.map((item) => (
+            <div
+              key={item.id}
+              onClick={() => selectItem(item)}
+              className={`bg-card rounded-xl border shadow-sm p-3 flex items-center gap-3 cursor-pointer transition-colors ${
+                selectedItem?.id === item.id
+                  ? "bg-accent/40 border-primary"
+                  : "border-border active:bg-muted/30"
+              }`}
+            >
+              <ItemIcon
+                name={item.name}
+                category={item.category}
+                image={item.image}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">
+                  {item.name}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {CATEGORIES[item.category].label} · {item.stock} {item.unit}
+                </div>
+              </div>
+              <span className="text-xs font-medium text-primary flex-shrink-0">
+                Select →
+              </span>
+            </div>
+          ))}
+          {browseItems.length === 0 && (
+            <div className="py-10 text-center text-muted-foreground text-sm">
+              No items found.
+            </div>
+          )}
+        </div>
+
+        <div className="hidden md:block bg-card rounded-xl border border-border shadow-sm overflow-hidden mb-6">
           <table className="w-full">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
@@ -142,7 +179,34 @@ export default function RestockPage() {
         <h3 className="text-sm font-semibold text-foreground mb-3">
           Recent Restocks
         </h3>
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        {/* Mobile card list */}
+        <div className="md:hidden space-y-2">
+          {restocks.slice(0, 10).map((r) => (
+            <div
+              key={r.id}
+              className="bg-card rounded-xl border border-border shadow-sm p-3 flex items-center justify-between gap-3"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">
+                  {r.item}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {r.date} · {r.name}
+                </div>
+              </div>
+              <span className="text-sm font-semibold text-foreground flex-shrink-0">
+                +{r.qty}
+              </span>
+            </div>
+          ))}
+          {restocks.length === 0 && (
+            <div className="py-10 text-center text-muted-foreground text-sm">
+              No restocks logged yet.
+            </div>
+          )}
+        </div>
+
+        <div className="hidden md:block bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
@@ -184,7 +248,7 @@ export default function RestockPage() {
       </div>
 
       {/* Right: restock form */}
-      <div className="w-80 flex-shrink-0">
+      <div className="w-full md:w-80 flex-shrink-0">
         <h3 className="text-sm font-semibold text-foreground mb-3">
           Restock Item
         </h3>

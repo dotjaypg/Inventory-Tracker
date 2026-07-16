@@ -11,6 +11,8 @@ import {
   ChevronRight,
   LogOut,
   PackagePlus,
+  Menu,
+  X,
 } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
@@ -42,6 +44,7 @@ export default function App() {
   const { currentStaff, loading, logout } = useAuth();
   const [activePage, setActivePage] = useState("Dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isAdmin = currentStaff?.role === "admin";
 
@@ -65,6 +68,11 @@ export default function App() {
   }
 
   const navItems = ALL_NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+
+  function selectPage(page: string) {
+    setActivePage(page);
+    setMobileNavOpen(false);
+  }
 
   // "Add Item" isn't in the sidebar nav (it's reached via the Inventory page's
   // button) but it's still a real page admins can land on.
@@ -116,7 +124,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       <aside
-        className={`${sidebarCollapsed ? "w-16" : "w-56"} flex-shrink-0 bg-card border-r border-border flex flex-col transition-all duration-200`}
+        className={`hidden md:flex ${sidebarCollapsed ? "w-16" : "w-56"} flex-shrink-0 bg-card border-r border-border flex-col transition-all duration-200`}
       >
         <div
           className={`flex items-center gap-3 px-4 py-4 border-b border-border ${sidebarCollapsed ? "justify-center" : ""}`}
@@ -198,9 +206,93 @@ export default function App() {
         </div>
       </aside>
 
+      {/* Mobile nav backdrop */}
+      {mobileNavOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* Mobile slide-out drawer */}
+      <aside
+        className={`md:hidden fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border flex flex-col transition-transform duration-200 ${
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
+            <Package className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-foreground leading-tight">
+              InvenTrack
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Creative Dept.
+            </div>
+          </div>
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+          {navItems.map((item) => {
+            const active = activePage === item.label;
+            return (
+              <button
+                key={item.label}
+                onClick={() => selectPage(item.label)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
+                  active
+                    ? "bg-accent text-primary"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                <item.icon
+                  className={`w-4 h-4 flex-shrink-0 ${active ? "text-primary" : ""}`}
+                />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="p-3 border-t border-border">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg">
+            <Avatar name={currentStaff.name} />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-foreground truncate">
+                {currentStaff.name}
+              </div>
+              <div className="text-xs text-muted-foreground capitalize">
+                {currentStaff.role}
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="p-1 rounded-md hover:bg-muted text-muted-foreground transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 bg-card border-b border-border flex items-center px-5 gap-4 flex-shrink-0">
-          <h1 className="text-base font-semibold text-foreground">
+        <header className="h-14 bg-card border-b border-border flex items-center px-4 md:px-5 gap-3 md:gap-4 flex-shrink-0">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="md:hidden p-1.5 -ml-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors flex-shrink-0"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <h1 className="text-base font-semibold text-foreground truncate">
             {activePage}
           </h1>
         </header>

@@ -113,7 +113,7 @@ export default function ReportsPage() {
   const topCost = costByItem[0]?.cost || 1;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 md:p-6 space-y-5">
       <div className="flex justify-between items-center">
         <div className="text-sm text-muted-foreground">
           Reporting period: this month
@@ -128,7 +128,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
             This Month's Usage Cost
@@ -153,7 +153,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
           <h3 className="font-semibold text-foreground mb-5">
             Monthly Borrowing Trend

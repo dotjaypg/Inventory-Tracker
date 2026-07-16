@@ -161,7 +161,7 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      <div className="flex-1 p-6 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-6 overflow-y-auto">
         {activeSection === "users" && (
           <div className="max-w-2xl space-y-5">
             <div className="flex items-center justify-between">
