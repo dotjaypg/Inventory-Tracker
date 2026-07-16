@@ -190,26 +190,26 @@ export default function Dashboard({
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-10 flex items-center justify-end gap-3 bg-background/95 backdrop-blur-sm border-b border-border px-6 py-3">
+      <div className="sticky top-0 z-10 flex items-center justify-end gap-2 sm:gap-3 flex-wrap bg-background/95 backdrop-blur-sm border-b border-border px-4 md:px-6 py-3">
         <button
           onClick={() => setPage("Add Item")}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
+          className="flex items-center gap-2 bg-primary text-white px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
         >
-          <Plus className="w-4 h-4" /> Add Item
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Item</span>
         </button>
         <button
           onClick={() => setPage("Requests")}
-          className="flex items-center gap-2 bg-card border border-border text-foreground px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors shadow-sm"
+          className="flex items-center gap-2 bg-card border border-border text-foreground px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors shadow-sm"
         >
-          <ClipboardList className="w-4 h-4" /> New Request
+          <ClipboardList className="w-4 h-4" /> <span className="hidden sm:inline">New Request</span>
         </button>
-        <button className="flex items-center gap-2 bg-card border border-border text-foreground px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors shadow-sm">
-          <Download className="w-4 h-4" /> Export Report
+        <button className="flex items-center gap-2 bg-card border border-border text-foreground px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors shadow-sm">
+          <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export Report</span>
         </button>
       </div>
 
-      <div className="px-6 space-y-6 pb-6">
-        <div className="grid grid-cols-5 gap-4">
+      <div className="px-4 md:px-6 space-y-6 pb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {kpis.map((k) => (
             <div
               key={k.label}
@@ -229,7 +229,7 @@ export default function Dashboard({
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="col-span-2 bg-card rounded-xl border border-border p-5 shadow-sm">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-semibold text-foreground">
@@ -328,7 +328,7 @@ export default function Dashboard({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="col-span-2 bg-card rounded-xl border border-border shadow-sm">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <h3 className="font-semibold text-foreground">Recent Requests</h3>
