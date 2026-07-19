@@ -16,6 +16,7 @@ import {
   Sun,
   Moon,
 } from "lucide-react";
+import { Analytics } from "@vercel/analytics/react";
 import { useAuth } from "./context/AuthContext";
 import { useTheme } from "./context/ThemeContext";
 import Login from "./pages/Login";
