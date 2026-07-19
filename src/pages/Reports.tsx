@@ -66,7 +66,7 @@ const CHART_COLORS: Record<CategoryKey, string> = {
 };
 
 export default function ReportsPage() {
-  const { items, logs } = useInventory();
+  const { items, logs, damageRecords } = useInventory();
 
   const monthlyBorrowData = buildMonthlyBorrowData(logs);
 
@@ -90,20 +90,37 @@ export default function ReportsPage() {
 
   const topCount = mostBorrowed[0]?.count || 1;
 
-  const totalCost = logs.reduce((sum, l) => sum + l.cost, 0);
+  // Usage Cost = materials actually consumed (equipment log.cost is always 0 —
+  // a normal borrow/return isn't a financial loss) + any repair/damage costs
+  // actually incurred (from Damage Records, logged when equipment comes back
+  // Damaged / Needs repair).
+  const materialsCost = logs.reduce((sum, l) => sum + l.cost, 0);
+  const damageCost = damageRecords.reduce((sum, d) => sum + d.cost, 0);
+  const totalCost = materialsCost + damageCost;
+
   const now = new Date();
-  const thisMonthCost = logs
-    .filter((l) => {
-      const d = new Date(l.borrowDate);
-      return (
-        d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-      );
-    })
-    .reduce((sum, l) => sum + l.cost, 0);
+  const isThisMonth = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return (
+      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    );
+  };
+  const thisMonthCost =
+    logs
+      .filter((l) => isThisMonth(l.borrowDate))
+      .reduce((sum, l) => sum + l.cost, 0) +
+    damageRecords
+      .filter((d) => isThisMonth(d.date))
+      .reduce((sum, d) => sum + d.cost, 0);
 
   const costByItem = Object.entries(
-    logs.reduce<Record<string, number>>((acc, l) => {
-      if (l.cost > 0) acc[l.item] = (acc[l.item] || 0) + l.cost;
+    [
+      ...logs
+        .filter((l) => l.cost > 0)
+        .map((l) => ({ item: l.item, cost: l.cost })),
+      ...damageRecords.map((d) => ({ item: d.item, cost: d.cost })),
+    ].reduce<Record<string, number>>((acc, l) => {
+      acc[l.item] = (acc[l.item] || 0) + l.cost;
       return acc;
     }, {}),
   )
@@ -119,10 +136,10 @@ export default function ReportsPage() {
           Reporting period: this month
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors">
+          <button className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-sm hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors">
             <FileText className="w-4 h-4" /> Export PDF
           </button>
-          <button className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors">
+          <button className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-sm hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors">
             <Download className="w-4 h-4" /> Export Excel
           </button>
         </div>
@@ -353,6 +370,77 @@ export default function ReportsPage() {
             })}
           </div>
         </div>
+      </div>
+
+      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="p-5 pb-3">
+          <h3 className="font-semibold text-foreground">Damage Records</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Logged when a returned equipment item is marked Damaged / Needs
+            repair. Only these amounts — not the item's full value — count
+            toward Usage Cost.
+          </p>
+        </div>
+        {damageRecords.length === 0 ? (
+          <div className="px-5 pb-5 text-sm text-muted-foreground">
+            No damage records yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px]">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border">
+                  {[
+                    "Date",
+                    "Item",
+                    "Title",
+                    "Cost",
+                    "Logged By",
+                    "Receipt",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {damageRecords.map((d) => (
+                  <tr key={d.id}>
+                    <td className="px-4 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
+                      {d.date}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm text-foreground whitespace-nowrap">
+                      {d.item}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm text-foreground">
+                      {d.title}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm font-medium text-foreground whitespace-nowrap">
+                      ₱{d.cost.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
+                      {d.createdBy || "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm">
+                      <a
+                        href={d.receiptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        View
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

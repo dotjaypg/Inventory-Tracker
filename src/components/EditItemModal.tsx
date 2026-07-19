@@ -37,7 +37,7 @@ export default function EditItemModal({
   const canSave = name.trim().length > 0 && unit.trim().length > 0;
 
   async function handleSave() {
-    if (!canSave) return;
+    if (!canSave || saving) return;
     setSaving(true);
     setError("");
     const result = await updateItem(item.id, {
@@ -146,11 +146,11 @@ export default function EditItemModal({
             <button
               type="button"
               onClick={() => setReturnable((v) => !v)}
-              className={`flex-shrink-0 w-11 h-6 rounded-full relative transition-colors ${returnable ? "bg-primary" : "bg-muted border border-border"}`}
+              className={`flex-shrink-0 w-10 h-5 rounded-full relative transition-colors ${returnable ? "bg-primary" : "bg-muted border border-border"}`}
             >
               <span
-                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                  returnable ? "translate-x-[22px]" : "translate-x-0.5"
+                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                  returnable ? "translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>

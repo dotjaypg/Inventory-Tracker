@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Search, Download, X, Printer, RotateCcw } from "lucide-react";
 import { useInventory } from "../context/InventoryContext";
-import { CATEGORIES } from "../types";
+import { CATEGORIES, LogEntry } from "../types";
 import StatusBadge from "../components/StatusBadge";
 import Avatar from "../components/Avatar";
+import ReturnItemModal from "../components/ReturnItemModal";
 
 export default function HistoryPage() {
   const { logs, turnBackItem } = useInventory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [returnLog, setReturnLog] = useState<LogEntry | null>(null);
 
   const filtered = logs.filter(
     (h) =>
@@ -16,6 +18,14 @@ export default function HistoryPage() {
       h.item.toLowerCase().includes(search.toLowerCase()),
   );
   const selected = logs.find((l) => l.id === selectedId) || null;
+
+  function openReturn(log: LogEntry) {
+    if (log.needsReturn) {
+      setReturnLog(log);
+    } else {
+      turnBackItem(log.id);
+    }
+  }
 
   function exportCSV() {
     const rows = [
@@ -72,7 +82,7 @@ export default function HistoryPage() {
           </div>
           <button
             onClick={exportCSV}
-            className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-sm hover:bg-muted/50 ml-auto transition-colors"
+            className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-sm hover:bg-neutral-600 dark:hover:bg-neutral-600 ml-auto transition-colors"
           >
             <Download className="w-4 h-4" /> Export
           </button>
@@ -109,9 +119,9 @@ export default function HistoryPage() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    turnBackItem(h.id);
+                    openReturn(h);
                   }}
-                  className="w-full mt-2 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 transition-colors"
+                  className="w-full mt-2 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 dark:hover:bg-green-950/40 dark:hover:text-green-300 dark:hover:border-green-800 transition-colors"
                 >
                   <RotateCcw className="w-3.5 h-3.5" /> Turn Back
                 </button>
@@ -186,9 +196,9 @@ export default function HistoryPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          turnBackItem(h.id);
+                          openReturn(h);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 dark:hover:bg-green-950/40 dark:hover:text-green-300 dark:hover:border-green-800 transition-colors"
                       >
                         <RotateCcw className="w-3.5 h-3.5" /> Turn Back
                       </button>
@@ -267,7 +277,7 @@ export default function HistoryPage() {
           </div>
           {selected.status === "active" && (
             <button
-              onClick={() => turnBackItem(selected.id)}
+              onClick={() => openReturn(selected)}
               className="w-full mt-3 flex items-center justify-center gap-2 bg-primary text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
             >
               <RotateCcw className="w-4 h-4" /> Turn Back
@@ -275,11 +285,15 @@ export default function HistoryPage() {
           )}
           <button
             onClick={() => window.print()}
-            className="w-full mt-2 flex items-center justify-center gap-2 bg-card border border-border text-foreground py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors"
+            className="w-full mt-2 flex items-center justify-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent py-2 rounded-lg text-sm hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors"
           >
             <Printer className="w-4 h-4" /> Print Receipt
           </button>
         </div>
+      )}
+
+      {returnLog && (
+        <ReturnItemModal log={returnLog} onClose={() => setReturnLog(null)} />
       )}
     </div>
   );

@@ -22,6 +22,8 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
   const [supplier, setSupplier] = useState("");
   const [description, setDescription] = useState("");
   const [saved, setSaved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
 
   const hasPacks = (parseInt(packSize) || 1) > 1;
   const enteredStock = parseInt(stock) || 0;
@@ -46,13 +48,15 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
     setCondition("Good");
     setSupplier("");
     setDescription("");
+    setRequestId(crypto.randomUUID());
   }
 
   const [saveError, setSaveError] = useState("");
 
   async function handleSave() {
-    if (!name.trim() || !unit.trim()) return;
+    if (!name.trim() || !unit.trim() || submitting) return;
     setSaveError("");
+    setSubmitting(true);
     const result = await addItem({
       name: name.trim(),
       category,
@@ -70,20 +74,24 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
       supplier: supplier.trim(),
       description: description.trim(),
       image,
+      clientRequestId: requestId,
     });
     if (!result.ok) {
+      setSubmitting(false);
       setSaveError(result.message || "Could not save this item.");
       return;
     }
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
+      setSubmitting(false);
       reset();
       setPage("Inventory");
     }, 900);
   }
 
-  const canSave = name.trim().length > 0 && unit.trim().length > 0;
+  const canSave =
+    name.trim().length > 0 && unit.trim().length > 0 && !submitting;
 
   return (
     <div className="p-4 md:p-6 max-w-4xl">
@@ -168,11 +176,11 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
                 <button
                   type="button"
                   onClick={() => setReturnable((v) => !v)}
-                  className={`flex-shrink-0 w-11 h-6 rounded-full relative transition-colors ${returnable ? "bg-primary" : "bg-muted border border-border"}`}
+                  className={`flex-shrink-0 w-10 h-5 rounded-full relative transition-colors ${returnable ? "bg-primary" : "bg-muted border border-border"}`}
                 >
                   <span
-                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                      returnable ? "translate-x-[22px]" : "translate-x-0.5"
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                      returnable ? "translate-x-5" : "translate-x-0"
                     }`}
                   />
                 </button>
@@ -186,7 +194,7 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                  <label className="flex items-start min-h-[2.5rem] text-sm font-medium text-foreground mb-1.5">
                     Pack price (₱)
                   </label>
                   <input
@@ -200,7 +208,7 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                  <label className="flex items-start min-h-[2.5rem] text-sm font-medium text-foreground mb-1.5">
                     Units per pack{" "}
                     <span className="text-muted-foreground font-normal">
                       (in {unit.trim() || "your Unit above"})
@@ -370,23 +378,37 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
               <p className="text-xs text-destructive">{saveError}</p>
             )}
 
-            <button
-              onClick={handleSave}
-              disabled={!canSave}
-              className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                canSave
-                  ? "bg-primary text-white hover:opacity-90"
-                  : "bg-muted text-muted-foreground cursor-not-allowed"
-              }`}
-            >
-              {saved ? (
-                <>
-                  <Check className="w-4 h-4" /> Added!
-                </>
-              ) : (
-                "Add to inventory"
-              )}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPage("Inventory")}
+                disabled={submitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-border text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!canSave}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  canSave
+                    ? "bg-primary text-white hover:opacity-90"
+                    : "bg-muted text-muted-foreground cursor-not-allowed"
+                }`}
+              >
+                {saved ? (
+                  <>
+                    <Check className="w-4 h-4" /> Added!
+                  </>
+                ) : submitting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />{" "}
+                    Adding…
+                  </>
+                ) : (
+                  "Add to inventory"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

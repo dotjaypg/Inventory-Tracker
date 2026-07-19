@@ -1,4 +1,5 @@
 import { CategoryKey, CATEGORIES } from "../types";
+import { useTheme } from "../context/ThemeContext";
 
 function initials(name: string) {
   return name
@@ -28,6 +29,9 @@ export default function ItemIcon({
   size?: keyof typeof SIZE_MAP;
 }) {
   const cat = CATEGORIES[category];
+  const { theme } = useTheme();
+  const bg = theme === "dark" ? cat.darkBg : cat.bg;
+  const text = theme === "dark" ? cat.darkText : cat.text;
   if (image) {
     return (
       <img
@@ -40,7 +44,7 @@ export default function ItemIcon({
   return (
     <div
       className={`${SIZE_MAP[size]} rounded-lg flex items-center justify-center font-semibold flex-shrink-0`}
-      style={{ backgroundColor: cat.bg, color: cat.text }}
+      style={{ backgroundColor: bg, color: text }}
     >
       {initials(name)}
     </div>

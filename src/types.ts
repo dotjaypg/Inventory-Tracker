@@ -3,11 +3,14 @@
 // the "Materials" dropdown chip in the UI; merch and equipment stand alone.
 export type CategoryKey = "marketing" | "production" | "merch" | "equipment";
 
-export const CATEGORIES: Record<CategoryKey, { label: string; bg: string; text: string }> = {
-  marketing: { label: "Marketing Materials", bg: "#E6F1FB", text: "#185FA5" },
-  production: { label: "Production Materials", bg: "#E1F5EE", text: "#0F6E56" },
-  merch: { label: "Merch", bg: "#FAEEDA", text: "#854F0B" },
-  equipment: { label: "Production Equipment", bg: "#FDEAEA", text: "#7A2020" },
+export const CATEGORIES: Record<
+  CategoryKey,
+  { label: string; bg: string; text: string; darkBg: string; darkText: string }
+> = {
+  marketing: { label: "Marketing Materials", bg: "#E6F1FB", text: "#185FA5", darkBg: "#132A3D", darkText: "#7CB8EE" },
+  production: { label: "Production Materials", bg: "#E1F5EE", text: "#0F6E56", darkBg: "#0F2C24", darkText: "#5FCDA8" },
+  merch: { label: "Merch", bg: "#FAEEDA", text: "#854F0B", darkBg: "#2E2410", darkText: "#E3AE5C" },
+  equipment: { label: "Production Equipment", bg: "#FDEAEA", text: "#7A2020", darkBg: "#2E1414", darkText: "#EF9494" },
 };
 
 export type StockStatus = "available" | "low" | "out";
@@ -93,4 +96,23 @@ export interface RestockEntry {
   qty: number;
   name: string; // who restocked it
   date: string;
+}
+
+// ─── Damage Records ──────────────────────────────────────────────────────────
+// Created when a returnable (equipment) item comes back Damaged / Needs repair.
+// The repair/damage cost recorded here — NOT the item's full replacement value
+// — is what actually counts as a financial loss toward Usage Cost / Value
+// Pulled Out. A normal borrow-and-return of equipment in Good condition is
+// not a cost event at all.
+export interface DamageRecord {
+  id: number;
+  logId: string | null; // the specific pull-out/return this damage was reported on, if any
+  itemId: number | null;
+  item: string;
+  title: string;
+  description: string;
+  cost: number;
+  date: string;
+  receiptUrl: string; // data URL of the uploaded receipt (image or PDF) — required
+  createdBy: string | null;
 }

@@ -93,7 +93,7 @@ export default function Inventory({
   const [deleteError, setDeleteError] = useState("");
 
   async function handleDelete() {
-    if (!deleteConfirmItem) return;
+    if (!deleteConfirmItem || deleting) return;
     setDeleting(true);
     setDeleteError("");
     const result = await deleteItem(deleteConfirmItem.id);
@@ -165,7 +165,7 @@ export default function Inventory({
             <button
               onClick={handleImportClick}
               disabled={importBusy}
-              className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-sm hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors disabled:opacity-50"
             >
               <Upload className="w-4 h-4" />{" "}
               <span className="hidden sm:inline">
@@ -174,9 +174,10 @@ export default function Inventory({
             </button>
             <button
               onClick={handleExport}
-              className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors"
+              className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-sm hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors"
             >
-              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export</span>
+              <Download className="w-4 h-4" />{" "}
+              <span className="hidden sm:inline">Export</span>
             </button>
             <button
               onClick={() => setPage("Add Item")}
@@ -191,8 +192,8 @@ export default function Inventory({
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm flex items-start gap-2 ${
               importResult.errors.length
-                ? "bg-yellow-50 border-yellow-200 text-yellow-800"
-                : "bg-green-50 border-green-200 text-green-700"
+                ? "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/40 dark:border-yellow-800 dark:text-yellow-300"
+                : "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/40 dark:border-green-800 dark:text-green-300"
             }`}
           >
             {importResult.errors.length ? (
@@ -282,7 +283,7 @@ export default function Inventory({
                     e.stopPropagation();
                     setDeleteConfirmItem(item);
                   }}
-                  className="p-2 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                  className="p-2 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -382,7 +383,7 @@ export default function Inventory({
                           e.stopPropagation();
                           setDeleteConfirmItem(item);
                         }}
-                        className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                        className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -484,7 +485,7 @@ export default function Inventory({
             </button>
             <button
               onClick={() => setDeleteConfirmItem(selectedItem)}
-              className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-200 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+              className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-200 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/60 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>

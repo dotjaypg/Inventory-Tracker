@@ -41,7 +41,8 @@ export default function CategoryChips({
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     }
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
@@ -65,7 +66,9 @@ export default function CategoryChips({
           }`}
         >
           Materials
-          <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+          <ChevronDown
+            className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`}
+          />
         </button>
         {open && (
           <div className="absolute top-full left-0 mt-1.5 bg-card border border-border rounded-lg shadow-lg z-30 min-w-[190px] overflow-hidden">
@@ -77,7 +80,9 @@ export default function CategoryChips({
                   setOpen(false);
                 }}
                 className={`block w-full text-left px-3.5 py-2.5 text-sm transition-colors ${
-                  value === key ? "bg-accent text-accent-foreground font-medium" : "text-foreground hover:bg-muted/60"
+                  value === key
+                    ? "bg-accent text-accent-foreground font-medium"
+                    : "text-foreground hover:bg-muted/60"
                 }`}
               >
                 {CATEGORIES[key].label}
@@ -90,7 +95,10 @@ export default function CategoryChips({
       <Chip active={value === "merch"} onClick={() => onChange("merch")}>
         {CATEGORIES.merch.label}
       </Chip>
-      <Chip active={value === "equipment"} onClick={() => onChange("equipment")}>
+      <Chip
+        active={value === "equipment"}
+        onClick={() => onChange("equipment")}
+      >
         {CATEGORIES.equipment.label}
       </Chip>
     </div>

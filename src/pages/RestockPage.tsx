@@ -16,6 +16,7 @@ export default function RestockPage() {
   const [name, setName] = useState(currentStaff?.name || "");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const browseItems = items.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase()),
@@ -36,7 +37,7 @@ export default function RestockPage() {
       : enteredQty;
 
   async function handleRestock() {
-    if (!selectedItem) return;
+    if (!selectedItem || submitting) return;
     if (!name.trim()) {
       setError("Please enter who is restocking this item.");
       return;
@@ -46,15 +47,18 @@ export default function RestockPage() {
       return;
     }
     setError("");
+    setSubmitting(true);
     const result = await restockItem({
       itemId: selectedItem.id,
       qty: actualUnitsToAdd,
       name: name.trim(),
     });
     if (!result.ok) {
+      setSubmitting(false);
       setError(result.message || "Could not restock this item.");
       return;
     }
+    setSubmitting(false);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -342,11 +346,17 @@ export default function RestockPage() {
 
               <button
                 onClick={handleRestock}
-                className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 bg-primary text-white hover:opacity-90"
+                disabled={submitting}
+                className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 bg-primary text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {saved ? (
                   <>
                     <Check className="w-4 h-4" /> Restocked!
+                  </>
+                ) : submitting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />{" "}
+                    Submitting…
                   </>
                 ) : (
                   <>

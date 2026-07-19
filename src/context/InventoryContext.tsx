@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   ReactNode,
 } from "react";
@@ -11,6 +12,7 @@ import {
   Employee,
   LogEntry,
   RestockEntry,
+  DamageRecord,
   CategoryKey,
   unitCost,
 } from "../types";
@@ -61,6 +63,7 @@ export interface NewItemInput {
   packSize?: number;
   qtyStep?: number;
   returnable?: boolean;
+  clientRequestId?: string; // idempotency key — set by callers that need duplicate-submission protection (e.g. Add Item)
 }
 
 interface BorrowInput {
@@ -70,6 +73,7 @@ interface BorrowInput {
   qty: number;
   purpose: string;
   conditionOut?: string | null; // used for returnable pull-outs instead of purpose
+  clientRequestId: string; // idempotency key — generated once per form-open, reused across repeated clicks of the same submit
 }
 
 interface RestockInput {
@@ -78,11 +82,22 @@ interface RestockInput {
   name: string;
 }
 
+export interface DamageRecordInput {
+  logId: string | null;
+  itemId: number;
+  title: string;
+  description: string;
+  cost: number;
+  date: string;
+  receiptUrl: string;
+}
+
 interface InventoryContextValue {
   items: InventoryItem[];
   employees: Employee[];
   logs: LogEntry[];
   restocks: RestockEntry[];
+  damageRecords: DamageRecord[];
   loading: boolean;
   usingMockData: boolean;
   refresh: () => Promise<void>;
@@ -101,6 +116,9 @@ interface InventoryContextValue {
   ) => Promise<{ ok: boolean; message?: string }>;
   restockItem: (
     input: RestockInput,
+  ) => Promise<{ ok: boolean; message?: string }>;
+  addDamageRecord: (
+    input: DamageRecordInput,
   ) => Promise<{ ok: boolean; message?: string }>;
 }
 
@@ -163,35 +181,64 @@ function rowToRestock(row: any): RestockEntry {
   };
 }
 
+function rowToDamageRecord(row: any): DamageRecord {
+  return {
+    id: row.id,
+    logId: row.log_id,
+    itemId: row.item_id,
+    item: row.item,
+    title: row.title,
+    description: row.description || "",
+    cost: row.cost || 0,
+    date: row.date,
+    receiptUrl: row.receipt_url,
+    createdBy: row.created_by || null,
+  };
+}
+
 export function InventoryProvider({ children }: { children: ReactNode }) {
   const { currentStaff } = useAuth();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [employees] = useState<Employee[]>(seedEmployees);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [restocks, setRestocks] = useState<RestockEntry[]>([]);
+  const [damageRecords, setDamageRecords] = useState<DamageRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const usingMockData = !isSupabaseConfigured;
+
+  // Tracks pull-out idempotency keys that are currently being submitted or
+  // have already been submitted this session. Checked synchronously — before
+  // any network round trip — so even a double-click that fires two calls to
+  // borrowItem() back-to-back (before React has re-rendered the disabled
+  // button) can't both proceed.
+  const seenRequestIds = useRef<Set<string>>(new Set());
 
   async function refresh() {
     if (!supabase) {
       setItems(seedItems);
       setLogs(seedLogs);
       setRestocks(seedRestocks);
+      setDamageRecords([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const [itemsRes, logsRes, restocksRes] = await Promise.all([
+    const [itemsRes, logsRes, restocksRes, damageRes] = await Promise.all([
       supabase.from("items").select("*").order("name"),
       supabase
         .from("logs")
         .select("*")
         .order("borrow_date", { ascending: false }),
       supabase.from("restocks").select("*").order("date", { ascending: false }),
+      supabase
+        .from("damage_records")
+        .select("*")
+        .order("date", { ascending: false }),
     ]);
     if (itemsRes.data) setItems(itemsRes.data.map(rowToItem));
     if (logsRes.data) setLogs(logsRes.data.map(rowToLog));
     if (restocksRes.data) setRestocks(restocksRes.data.map(rowToRestock));
+    if (damageRes.data) setDamageRecords(damageRes.data.map(rowToDamageRecord));
     setLoading(false);
   }
 
@@ -202,6 +249,15 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   async function addItem(
     input: NewItemInput,
   ): Promise<{ ok: boolean; message?: string }> {
+    // Same idempotency guard used for pull-outs: if this exact submission has
+    // already been seen (in flight or completed), don't create a second item.
+    if (input.clientRequestId) {
+      if (seenRequestIds.current.has(input.clientRequestId)) {
+        return { ok: true };
+      }
+      seenRequestIds.current.add(input.clientRequestId);
+    }
+
     if (!supabase) {
       setItems((prev) => {
         const nextId = prev.length ? Math.max(...prev.map((i) => i.id)) + 1 : 1;
@@ -249,8 +305,16 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       pack_size: input.packSize || 1,
       qty_step: input.qtyStep || 1,
       returnable: input.returnable ?? input.category === "equipment",
+      client_request_id: input.clientRequestId || null,
     });
-    if (error) return { ok: false, message: friendlyError(error) };
+    if (error) {
+      const isDuplicateSubmission =
+        error.code === "23505" &&
+        (error as any).message?.includes("client_request_id");
+      if (!isDuplicateSubmission) {
+        return { ok: false, message: friendlyError(error) };
+      }
+    }
     await refresh();
     return { ok: true };
   }
@@ -332,6 +396,14 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   async function borrowItem(
     input: BorrowInput,
   ): Promise<{ ok: boolean; message?: string }> {
+    // Synchronous, in-memory first line of defense: if this exact submission
+    // (same idempotency key) has already been seen — whether it's still in
+    // flight or already completed — don't do anything a second time.
+    if (seenRequestIds.current.has(input.clientRequestId)) {
+      return { ok: true };
+    }
+    seenRequestIds.current.add(input.clientRequestId);
+
     const item = items.find((i) => i.id === input.itemId);
     if (!item) return { ok: false, message: "Item not found." };
     if (input.qty > item.stock)
@@ -340,7 +412,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         message: `Only ${item.stock} ${item.unit} available.`,
       };
 
-    const cost = Math.round(unitCost(item) * input.qty * 100) / 100; // computed server-side from the item's own price, never trusts client input
+    // Only materials (consumed, not returned) carry a real cost. Equipment
+    // pull-outs are not a financial loss just from being borrowed — any actual
+    // loss from equipment is captured separately via a Damage Record when it
+    // comes back Damaged / Needs repair.
+    const cost = item.returnable
+      ? 0
+      : Math.round(unitCost(item) * input.qty * 100) / 100;
     const needsReturn = item.returnable;
     const today = new Date().toISOString().slice(0, 10);
 
@@ -392,8 +470,23 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       needs_return: needsReturn,
       condition_out: needsReturn ? input.conditionOut || null : null,
       cost,
+      client_request_id: input.clientRequestId,
     });
-    if (logError) return { ok: false, message: friendlyError(logError) };
+    if (logError) {
+      // A unique-constraint hit on client_request_id means this exact
+      // submission already went through once before (e.g. a slow network
+      // caused a retry, or an earlier click's request is still landing) —
+      // that's not a real error, the pull-out already exists, so treat it
+      // as a successful no-op instead of showing the user an error.
+      const isDuplicateSubmission =
+        logError.code === "23505" &&
+        (logError as any).message?.includes("client_request_id");
+      if (!isDuplicateSubmission) {
+        return { ok: false, message: friendlyError(logError) };
+      }
+      await refresh();
+      return { ok: true };
+    }
 
     const { error: itemError } = await supabase
       .from("items")
@@ -515,6 +608,56 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  async function addDamageRecord(
+    input: DamageRecordInput,
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!input.title.trim())
+      return { ok: false, message: "Please enter a title." };
+    if (!input.receiptUrl)
+      return { ok: false, message: "A receipt attachment is required." };
+    if (input.cost <= 0)
+      return {
+        ok: false,
+        message: "Repair/damage cost must be greater than 0.",
+      };
+
+    const item = items.find((i) => i.id === input.itemId);
+
+    if (!supabase) {
+      setDamageRecords((prev) => [
+        {
+          id: prev.length ? Math.max(...prev.map((d) => d.id)) + 1 : 1,
+          logId: input.logId,
+          itemId: input.itemId,
+          item: item?.name || "",
+          title: input.title.trim(),
+          description: input.description.trim(),
+          cost: input.cost,
+          date: input.date,
+          receiptUrl: input.receiptUrl,
+          createdBy: currentStaff?.name ?? null,
+        },
+        ...prev,
+      ]);
+      return { ok: true };
+    }
+
+    const { error } = await supabase.from("damage_records").insert({
+      log_id: input.logId,
+      item_id: input.itemId,
+      item: item?.name || "",
+      title: input.title.trim(),
+      description: input.description.trim(),
+      cost: input.cost,
+      date: input.date,
+      receipt_url: input.receiptUrl,
+      created_by: currentStaff?.name ?? null,
+    });
+    if (error) return { ok: false, message: friendlyError(error) };
+    await refresh();
+    return { ok: true };
+  }
+
   return (
     <InventoryContext.Provider
       value={{
@@ -522,6 +665,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         employees,
         logs,
         restocks,
+        damageRecords,
         loading,
         usingMockData,
         refresh,
@@ -531,6 +675,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         borrowItem,
         turnBackItem,
         restockItem,
+        addDamageRecord,
       }}
     >
       {children}

@@ -143,25 +143,25 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex h-full">
-      <div className="w-52 border-r border-border p-4 space-y-1">
+    <div className="flex flex-col md:flex-row h-full">
+      <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible border-b md:border-b-0 md:border-r border-border p-2 md:p-4 md:w-52 flex-shrink-0">
         {sections.map((s) => (
           <button
             key={s.id}
             onClick={() => setActiveSection(s.id)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg text-sm font-medium text-left transition-colors whitespace-nowrap ${
               activeSection === s.id
                 ? "bg-accent text-primary"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             }`}
           >
-            <s.icon className="w-4 h-4" />
+            <s.icon className="w-4 h-4 flex-shrink-0" />
             {s.label}
           </button>
         ))}
       </div>
 
-      <div className="flex-1 p-4 md:p-6 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-6 overflow-y-auto min-w-0">
         {activeSection === "users" && (
           <div className="max-w-2xl space-y-5">
             <div className="flex items-center justify-between">
@@ -197,7 +197,7 @@ export default function SettingsPage() {
                         setDeleteStaffTarget({ id: s.id, name: s.name });
                         setDeleteStaffError("");
                       }}
-                      className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                      className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors"
                       title="Delete staff"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -272,17 +272,17 @@ export default function SettingsPage() {
             <h3 className="font-semibold text-foreground text-lg">Database</h3>
             <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
               {usingMockData ? (
-                <div className="flex items-center gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-800">
                   <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                  <span className="text-sm font-medium text-yellow-700">
+                  <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
                     Running on local demo data — add your Supabase keys to .env
                     to connect a real database.
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
+                <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-800">
                   <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm font-medium text-green-700">
+                  <span className="text-sm font-medium text-green-700 dark:text-green-300">
                     Connected to Supabase
                   </span>
                 </div>
@@ -329,7 +329,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDownloadTemplate}
-                  className="flex items-center gap-2 bg-card border border-border text-foreground px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-xs font-medium hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" /> Download Template
                 </button>
@@ -353,8 +353,8 @@ export default function SettingsPage() {
                 <div
                   className={`rounded-lg border px-4 py-3 text-xs flex items-start gap-2 ${
                     bulkImportResult.errors.length
-                      ? "bg-yellow-50 border-yellow-200 text-yellow-800"
-                      : "bg-green-50 border-green-200 text-green-700"
+                      ? "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/40 dark:border-yellow-800 dark:text-yellow-300"
+                      : "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/40 dark:border-green-800 dark:text-green-300"
                   }`}
                 >
                   {bulkImportResult.errors.length ? (

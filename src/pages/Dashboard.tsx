@@ -71,21 +71,29 @@ export default function Dashboard({
 }: {
   setPage: (p: string) => void;
 }) {
-  const { items, logs, restocks } = useInventory();
+  const { items, logs, restocks, damageRecords } = useInventory();
 
   const low = items.filter((i) => getStockStatus(i) === "low").length;
   const out = items.filter((i) => getStockStatus(i) === "out").length;
   const active = logs.filter((l) => l.status === "active").length;
 
   const now = new Date();
-  const thisMonthCost = logs
-    .filter((l) => {
-      const d = new Date(l.borrowDate);
-      return (
-        d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-      );
-    })
-    .reduce((sum, l) => sum + l.cost, 0);
+  const isThisMonth = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return (
+      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    );
+  };
+  // Usage Cost = materials actually consumed this month (equipment log.cost is
+  // always 0 — a normal borrow/return isn't a financial loss) + any repair/
+  // damage costs actually incurred this month.
+  const thisMonthCost =
+    logs
+      .filter((l) => isThisMonth(l.borrowDate))
+      .reduce((sum, l) => sum + l.cost, 0) +
+    damageRecords
+      .filter((d) => isThisMonth(d.date))
+      .reduce((sum, d) => sum + d.cost, 0);
 
   const kpis = [
     {
@@ -93,7 +101,7 @@ export default function Dashboard({
       value: items.length,
       icon: Package,
       color: "text-blue-600",
-      bg: "bg-blue-50",
+      bg: "bg-blue-50 dark:bg-blue-950/40",
       trend: `${items.length} tracked`,
     },
     {
@@ -101,7 +109,7 @@ export default function Dashboard({
       value: out,
       icon: X,
       color: "text-red-600",
-      bg: "bg-red-50",
+      bg: "bg-red-50 dark:bg-red-950/40",
       trend: out > 0 ? "Needs reorder" : "None — good",
     },
     {
@@ -109,7 +117,7 @@ export default function Dashboard({
       value: low,
       icon: AlertTriangle,
       color: "text-yellow-600",
-      bg: "bg-yellow-50",
+      bg: "bg-yellow-50 dark:bg-yellow-950/40",
       trend: "Needs restocking",
     },
     {
@@ -117,7 +125,7 @@ export default function Dashboard({
       value: active,
       icon: ClipboardList,
       color: "text-red-600",
-      bg: "bg-red-50",
+      bg: "bg-red-50 dark:bg-red-950/40",
       trend: "Currently out",
     },
     {
@@ -125,7 +133,7 @@ export default function Dashboard({
       value: `₱${thisMonthCost.toFixed(2)}`,
       icon: Wallet,
       color: "text-green-600",
-      bg: "bg-green-50",
+      bg: "bg-green-50 dark:bg-green-950/40",
       trend: "Value pulled out",
     },
   ];
@@ -195,16 +203,19 @@ export default function Dashboard({
           onClick={() => setPage("Add Item")}
           className="flex items-center gap-2 bg-primary text-white px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
         >
-          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Item</span>
+          <Plus className="w-4 h-4" />{" "}
+          <span className="hidden sm:inline">Add Item</span>
         </button>
         <button
           onClick={() => setPage("Requests")}
-          className="flex items-center gap-2 bg-card border border-border text-foreground px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors shadow-sm"
+          className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors shadow-sm"
         >
-          <ClipboardList className="w-4 h-4" /> <span className="hidden sm:inline">New Request</span>
+          <ClipboardList className="w-4 h-4" />{" "}
+          <span className="hidden sm:inline">New Request</span>
         </button>
-        <button className="flex items-center gap-2 bg-card border border-border text-foreground px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors shadow-sm">
-          <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export Report</span>
+        <button className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors shadow-sm">
+          <Download className="w-4 h-4" />{" "}
+          <span className="hidden sm:inline">Export Report</span>
         </button>
       </div>
 

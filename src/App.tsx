@@ -13,8 +13,11 @@ import {
   PackagePlus,
   Menu,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
+import { useTheme } from "./context/ThemeContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
@@ -38,10 +41,17 @@ const ALL_NAV_ITEMS = [
   { label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 
-const STAFF_ALLOWED_PAGES = ["Inventory", "Requests", "Restock", "History"];
+const STAFF_ALLOWED_PAGES = [
+  "Inventory",
+  "Add Item",
+  "Requests",
+  "Restock",
+  "History",
+];
 
 export default function App() {
   const { currentStaff, loading, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [activePage, setActivePage] = useState("Dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -87,11 +97,7 @@ export default function App() {
       case "Inventory":
         return <Inventory setPage={setActivePage} />;
       case "Add Item":
-        return isAdmin ? (
-          <AddItem setPage={setActivePage} />
-        ) : (
-          <Inventory setPage={setActivePage} />
-        );
+        return <AddItem setPage={setActivePage} />;
       case "Requests":
         return <Requests />;
       case "Restock":
@@ -169,6 +175,26 @@ export default function App() {
 
         <div className="p-3 border-t border-border space-y-2">
           <button
+            onClick={toggleTheme}
+            title={
+              sidebarCollapsed
+                ? theme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+                : undefined
+            }
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-muted/50 text-sm transition-colors"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4 flex-shrink-0" />
+            ) : (
+              <Moon className="w-4 h-4 flex-shrink-0" />
+            )}
+            {!sidebarCollapsed && (
+              <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+            )}
+          </button>
+          <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-muted/50 text-sm transition-colors"
           >
@@ -228,9 +254,7 @@ export default function App() {
             <div className="text-sm font-bold text-foreground leading-tight">
               InvenTrack
             </div>
-            <div className="text-xs text-muted-foreground">
-              Creative Dept.
-            </div>
+            <div className="text-xs text-muted-foreground">Creative Dept.</div>
           </div>
           <button
             onClick={() => setMobileNavOpen(false)}
@@ -262,7 +286,18 @@ export default function App() {
           })}
         </nav>
 
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-border space-y-2">
+          <button
+            onClick={toggleTheme}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-muted/50 text-sm transition-colors"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4 flex-shrink-0" />
+            ) : (
+              <Moon className="w-4 h-4 flex-shrink-0" />
+            )}
+            <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+          </button>
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg">
             <Avatar name={currentStaff.name} />
             <div className="flex-1 min-w-0">

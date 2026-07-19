@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Search, X, RotateCcw } from "lucide-react";
 import { useInventory } from "../context/InventoryContext";
-import { getStockStatus, CATEGORIES, unitCost } from "../types";
+import { getStockStatus, CATEGORIES, unitCost, LogEntry } from "../types";
 import StatusBadge from "../components/StatusBadge";
 import ItemIcon from "../components/ItemIcon";
 import Avatar from "../components/Avatar";
+import ReturnItemModal from "../components/ReturnItemModal";
 
 const CONDITION_OPTIONS = ["Good", "Fair", "Needs repair", "Damaged"];
 
@@ -28,9 +29,10 @@ export default function Requests() {
   const [formPurpose, setFormPurpose] = useState("");
   const [formConditionOut, setFormConditionOut] = useState("Good");
   const [formError, setFormError] = useState("");
+  const [requestId, setRequestId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const [returnLogId, setReturnLogId] = useState<string | null>(null);
-  const [returnCondition, setReturnCondition] = useState("Good");
+  const [returnLog, setReturnLog] = useState<LogEntry | null>(null);
 
   const statusTabs = ["All", "Active", "Returned"];
   const filteredReqs =
@@ -50,17 +52,21 @@ export default function Requests() {
     setFormPurpose("");
     setFormConditionOut("Good");
     setFormError("");
+    setRequestId(crypto.randomUUID());
+    setSubmitting(false);
     setShowModal(true);
   }
 
   const needsReturn = selectedItem?.returnable ?? false;
 
   async function handleBorrow() {
-    if (!selectedItem) return;
+    if (!selectedItem || submitting) return;
     if (!formDept.trim()) {
       setFormError("Please enter the name / department.");
       return;
     }
+    setSubmitting(true);
+    setFormError("");
     const step = selectedItem.qtyStep || 1;
     const rawQty = parseInt(formQty) || step;
     const qty = Math.max(step, Math.round(rawQty / step) * step);
@@ -71,27 +77,23 @@ export default function Requests() {
       qty,
       purpose: needsReturn ? "" : formPurpose.trim() || "Not specified",
       conditionOut: needsReturn ? formConditionOut : null,
+      clientRequestId: requestId,
     });
     if (!result.ok) {
+      setSubmitting(false);
       setFormError(result.message || "Could not complete this request.");
       return;
     }
     setShowModal(false);
+    setSubmitting(false);
   }
 
-  function openReturn(logId: string, logNeedsReturn: boolean) {
-    if (logNeedsReturn) {
-      setReturnLogId(logId);
-      setReturnCondition("Good");
+  function openReturn(log: LogEntry) {
+    if (log.needsReturn) {
+      setReturnLog(log);
     } else {
-      turnBackItem(logId);
+      turnBackItem(log.id);
     }
-  }
-
-  async function handleConfirmReturn() {
-    if (!returnLogId) return;
-    await turnBackItem(returnLogId, returnCondition);
-    setReturnLogId(null);
   }
 
   return (
@@ -237,8 +239,8 @@ export default function Requests() {
                 </div>
                 {r.needsReturn && r.status === "active" && (
                   <button
-                    onClick={() => openReturn(r.id, r.needsReturn)}
-                    className="w-full mt-2 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 transition-colors"
+                    onClick={() => openReturn(r)}
+                    className="w-full mt-2 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 dark:hover:bg-green-950/40 dark:hover:text-green-300 dark:hover:border-green-800 transition-colors"
                   >
                     <RotateCcw className="w-3.5 h-3.5" /> Turn Back
                   </button>
@@ -331,8 +333,8 @@ export default function Requests() {
                     <td className="px-4 py-3">
                       {r.needsReturn && r.status === "active" && (
                         <button
-                          onClick={() => openReturn(r.id, r.needsReturn)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 transition-colors"
+                          onClick={() => openReturn(r)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-green-50 hover:text-green-700 border border-border hover:border-green-200 dark:hover:bg-green-950/40 dark:hover:text-green-300 dark:hover:border-green-800 transition-colors"
                         >
                           <RotateCcw className="w-3.5 h-3.5" /> Turn Back
                         </button>
@@ -354,7 +356,7 @@ export default function Requests() {
       {showModal && selectedItem && (
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
-          onClick={() => setShowModal(false)}
+          onClick={() => !submitting && setShowModal(false)}
         >
           <div
             className="bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6"
@@ -465,15 +467,20 @@ export default function Requests() {
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                  disabled={submitting}
+                  className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleBorrow}
-                  className="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 transition-opacity"
+                  disabled={submitting}
+                  className="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Confirm Pull-Out
+                  {submitting && (
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  )}
+                  {submitting ? "Submitting…" : "Confirm Pull-Out"}
                 </button>
               </div>
             </div>
@@ -481,58 +488,8 @@ export default function Requests() {
         </div>
       )}
 
-      {returnLogId && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
-          onClick={() => setReturnLogId(null)}
-        >
-          <div
-            className="bg-card rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-semibold text-foreground">
-                Return Item
-              </h3>
-              <button
-                onClick={() => setReturnLogId(null)}
-                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Condition (upon return)
-              </label>
-              <select
-                value={returnCondition}
-                onChange={(e) => setReturnCondition(e.target.value)}
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              >
-                {CONDITION_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-3 pt-5">
-              <button
-                onClick={() => setReturnLogId(null)}
-                className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmReturn}
-                className="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                Confirm Return
-              </button>
-            </div>
-          </div>
-        </div>
+      {returnLog && (
+        <ReturnItemModal log={returnLog} onClose={() => setReturnLog(null)} />
       )}
     </div>
   );

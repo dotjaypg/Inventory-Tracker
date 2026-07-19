@@ -15,6 +15,7 @@ drop view if exists staff_public;
 drop function if exists verify_pin(uuid, text);
 drop function if exists create_staff(text, text, text);
 drop function if exists set_pin(uuid, text);
+drop table if exists damage_records;
 drop table if exists restocks;
 drop table if exists logs;
 drop table if exists items;
@@ -89,6 +90,24 @@ create table restocks (
   staff_id uuid references staff(id),
   name text not null,           -- who restocked it
   date date not null default current_date
+);
+
+-- ─── Damage Records ──────────────────────────────────────────────────────────
+-- Created when a returnable (equipment) item comes back Damaged / Needs repair.
+-- The repair/damage cost here — NOT the item's full replacement value — is
+-- what actually counts toward Usage Cost / Value Pulled Out.
+create table damage_records (
+  id bigint generated always as identity primary key,
+  log_id text,  -- the logs.display_id this damage was reported on, if any (not a hard FK since display_id isn't unique-indexed)
+  item_id bigint references items(id) on delete set null,
+  item text not null,
+  title text not null,
+  description text default '',
+  cost numeric not null default 0,
+  date date not null default current_date,
+  receipt_url text not null,   -- data URL of the uploaded receipt (image or PDF) — required
+  created_by text,
+  created_at timestamptz not null default now()
 );
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -187,6 +206,7 @@ alter table staff enable row level security;
 alter table items enable row level security;
 alter table logs enable row level security;
 alter table restocks enable row level security;
+alter table damage_records enable row level security;
 
 -- No direct policies on `staff` — it's only reachable via staff_public / RPCs.
 
@@ -202,10 +222,14 @@ create policy "logs are updatable" on logs for update using (true);
 create policy "restocks are readable" on restocks for select using (true);
 create policy "restocks are insertable" on restocks for insert with check (true);
 
+create policy "damage_records are readable" on damage_records for select using (true);
+create policy "damage_records are insertable" on damage_records for insert with check (true);
+
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on items to anon, authenticated;
 grant select, insert, update on logs to anon, authenticated;
 grant select, insert on restocks to anon, authenticated;
+grant select, insert on damage_records to anon, authenticated;
 grant select on staff_public to anon, authenticated;
 grant execute on function verify_pin(uuid, text) to anon, authenticated;
 grant execute on function create_staff(text, text, text) to anon, authenticated;
