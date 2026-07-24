@@ -100,6 +100,8 @@ interface InventoryContextValue {
   damageRecords: DamageRecord[];
   loading: boolean;
   usingMockData: boolean;
+  dbSizeMb: number | null;
+  lastClearedAt: string | null;
   refresh: () => Promise<void>;
   addItem: (input: NewItemInput) => Promise<{ ok: boolean; message?: string }>;
   updateItem: (
@@ -119,6 +121,10 @@ interface InventoryContextValue {
   ) => Promise<{ ok: boolean; message?: string }>;
   addDamageRecord: (
     input: DamageRecordInput,
+  ) => Promise<{ ok: boolean; message?: string }>;
+  clearHistory: (
+    clearLogs: boolean,
+    clearRestocks: boolean,
   ) => Promise<{ ok: boolean; message?: string }>;
 }
 
@@ -203,6 +209,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [restocks, setRestocks] = useState<RestockEntry[]>([]);
   const [damageRecords, setDamageRecords] = useState<DamageRecord[]>([]);
+  const [dbSizeMb, setDbSizeMb] = useState<number | null>(null);
+  const [lastClearedAt, setLastClearedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const usingMockData = !isSupabaseConfigured;
 
@@ -219,26 +227,40 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setLogs(seedLogs);
       setRestocks(seedRestocks);
       setDamageRecords([]);
+      setDbSizeMb(null);
+      setLastClearedAt(null);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const [itemsRes, logsRes, restocksRes, damageRes] = await Promise.all([
-      supabase.from("items").select("*").order("name"),
-      supabase
-        .from("logs")
-        .select("*")
-        .order("borrow_date", { ascending: false }),
-      supabase.from("restocks").select("*").order("date", { ascending: false }),
-      supabase
-        .from("damage_records")
-        .select("*")
-        .order("date", { ascending: false }),
-    ]);
+    const [itemsRes, logsRes, restocksRes, damageRes, sizeRes, settingsRes] =
+      await Promise.all([
+        supabase.from("items").select("*").order("name"),
+        supabase
+          .from("logs")
+          .select("*")
+          .order("borrow_date", { ascending: false }),
+        supabase
+          .from("restocks")
+          .select("*")
+          .order("date", { ascending: false }),
+        supabase
+          .from("damage_records")
+          .select("*")
+          .order("date", { ascending: false }),
+        supabase.rpc("get_db_size_mb"),
+        supabase
+          .from("app_settings")
+          .select("*")
+          .eq("key", "last_cleared_at")
+          .maybeSingle(),
+      ]);
     if (itemsRes.data) setItems(itemsRes.data.map(rowToItem));
     if (logsRes.data) setLogs(logsRes.data.map(rowToLog));
     if (restocksRes.data) setRestocks(restocksRes.data.map(rowToRestock));
     if (damageRes.data) setDamageRecords(damageRes.data.map(rowToDamageRecord));
+    if (typeof sizeRes.data === "number") setDbSizeMb(sizeRes.data);
+    setLastClearedAt(settingsRes.data?.value ?? null);
     setLoading(false);
   }
 
@@ -658,6 +680,30 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  async function clearHistory(
+    clearLogs: boolean,
+    clearRestocks: boolean,
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!clearLogs && !clearRestocks) {
+      return { ok: false, message: "Select at least one thing to clear." };
+    }
+
+    if (!supabase) {
+      if (clearLogs) setLogs([]);
+      if (clearRestocks) setRestocks([]);
+      setLastClearedAt(new Date().toISOString());
+      return { ok: true };
+    }
+
+    const { error } = await supabase.rpc("clear_history", {
+      p_clear_logs: clearLogs,
+      p_clear_restocks: clearRestocks,
+    });
+    if (error) return { ok: false, message: friendlyError(error) };
+    await refresh();
+    return { ok: true };
+  }
+
   return (
     <InventoryContext.Provider
       value={{
@@ -668,6 +714,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         damageRecords,
         loading,
         usingMockData,
+        dbSizeMb,
+        lastClearedAt,
         refresh,
         addItem,
         updateItem,
@@ -676,6 +724,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         turnBackItem,
         restockItem,
         addDamageRecord,
+        clearHistory,
       }}
     >
       {children}

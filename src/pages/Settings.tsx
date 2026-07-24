@@ -13,6 +13,7 @@ import {
   Upload,
   AlertTriangle,
   CheckCircle2,
+  HardDrive,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
@@ -32,7 +33,17 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState("users");
   const { staffList, addStaff, resetPin, deleteStaff, currentStaff } =
     useAuth();
-  const { items, logs, usingMockData, addItem } = useInventory();
+  const {
+    items,
+    logs,
+    restocks,
+    damageRecords,
+    usingMockData,
+    addItem,
+    dbSizeMb,
+    lastClearedAt,
+    clearHistory,
+  } = useInventory();
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
@@ -56,6 +67,42 @@ export default function SettingsPage() {
     errors: string[];
   } | null>(null);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearLogsChecked, setClearLogsChecked] = useState(true);
+  const [clearRestocksChecked, setClearRestocksChecked] = useState(true);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [clearError, setClearError] = useState("");
+  const [clearDone, setClearDone] = useState(false);
+
+  const daysSinceCleared = lastClearedAt
+    ? Math.floor(
+        (Date.now() - new Date(lastClearedAt).getTime()) /
+          (1000 * 60 * 60 * 24),
+      )
+    : null;
+  // Nudge once at least a month has passed since the last clear (or since
+  // ever, if history has never been cleared and there's actually something
+  // worth clearing yet).
+  const monthlyReminderDue =
+    (daysSinceCleared === null && (logs.length > 0 || restocks.length > 0)) ||
+    (daysSinceCleared !== null && daysSinceCleared >= 30);
+
+  async function handleClearHistory() {
+    setClearBusy(true);
+    setClearError("");
+    const result = await clearHistory(clearLogsChecked, clearRestocksChecked);
+    setClearBusy(false);
+    if (!result.ok) {
+      setClearError(result.message || "Could not clear history.");
+      return;
+    }
+    setClearDone(true);
+    setTimeout(() => {
+      setClearDone(false);
+      setShowClearModal(false);
+    }, 900);
+  }
 
   function handleDownloadTemplate() {
     downloadCSV("inventory-template.csv", csvTemplate());
@@ -311,6 +358,117 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
+
+              {!usingMockData && dbSizeMb !== null && (
+                <div>
+                  {(() => {
+                    // Supabase's free tier gives 500 MB of database storage.
+                    // This bar is just a visual heads-up, not a hard limit —
+                    // Supabase itself is the source of truth for actual usage.
+                    const FREE_TIER_LIMIT_MB = 500;
+                    const pct = Math.min(
+                      100,
+                      Math.round((dbSizeMb / FREE_TIER_LIMIT_MB) * 100),
+                    );
+                    const color =
+                      pct >= 90
+                        ? "bg-red-500"
+                        : pct >= 70
+                          ? "bg-yellow-500"
+                          : "bg-green-500";
+                    const label =
+                      pct >= 90
+                        ? "Nearly full"
+                        : pct >= 70
+                          ? "Getting full"
+                          : "Healthy";
+                    const labelColor =
+                      pct >= 90
+                        ? "text-red-600 dark:text-red-400"
+                        : pct >= 70
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-green-600 dark:text-green-400";
+                    return (
+                      <div className="flex items-center gap-3">
+                        <HardDrive className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="text-muted-foreground">
+                              Database size:{" "}
+                              <span className="font-medium text-foreground">
+                                {dbSizeMb} MB
+                              </span>{" "}
+                              / {FREE_TIER_LIMIT_MB} MB
+                            </span>
+                            <span className={`font-medium ${labelColor}`}>
+                              {label}
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${color} rounded-full transition-all`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {monthlyReminderDue && (
+              <div className="flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
+                    {daysSinceCleared === null
+                      ? "History hasn't been cleared yet."
+                      : `It's been ${daysSinceCleared} days since history was last cleared.`}
+                  </p>
+                  <p className="text-xs text-yellow-700/80 dark:text-yellow-300/80 mt-0.5">
+                    Clearing old pull-out and restock logs keeps the database
+                    lean. Damage records and item data are never affected.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowClearModal(true)}
+                  className="flex-shrink-0 text-xs font-medium text-yellow-700 dark:text-yellow-300 underline hover:no-underline"
+                >
+                  Clear now
+                </button>
+              </div>
+            )}
+
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">
+                  Clear History
+                </h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Permanently deletes old records to keep the database lean.
+                  This does <span className="font-medium">not</span> touch your
+                  items, staff accounts, or damage records (kept for
+                  financial/audit purposes) — only pull-out logs and/or restock
+                  history, whichever you choose below.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>{logs.length} log entries</span>
+                <span>·</span>
+                <span>{restocks.length} restock entries</span>
+                <span>·</span>
+                <span>
+                  {damageRecords.length} damage records (never cleared here)
+                </span>
+              </div>
+              <button
+                onClick={() => setShowClearModal(true)}
+                className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800 px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-100 dark:hover:bg-red-950/60 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear History…
+              </button>
             </div>
 
             <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
@@ -589,6 +747,84 @@ export default function SettingsPage() {
                 className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
               >
                 {deletingStaff ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClearModal && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => !clearBusy && setShowClearModal(false)}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Clear History
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              This permanently deletes the selected records. Items, staff
+              accounts, and damage records are never affected. This can't be
+              undone.
+            </p>
+            <div className="space-y-2 mb-4">
+              <label className="flex items-center gap-2.5 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={clearLogsChecked}
+                  onChange={(e) => setClearLogsChecked(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-foreground">
+                  Pull-out / borrow logs{" "}
+                  <span className="text-muted-foreground">({logs.length})</span>
+                </span>
+              </label>
+              <label className="flex items-center gap-2.5 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={clearRestocksChecked}
+                  onChange={(e) => setClearRestocksChecked(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-foreground">
+                  Restock history{" "}
+                  <span className="text-muted-foreground">
+                    ({restocks.length})
+                  </span>
+                </span>
+              </label>
+            </div>
+            {clearError && (
+              <p className="text-xs text-destructive mb-4">{clearError}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearModal(false)}
+                disabled={clearBusy}
+                className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearHistory}
+                disabled={
+                  clearBusy || (!clearLogsChecked && !clearRestocksChecked)
+                }
+                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {clearDone ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" /> Cleared!
+                  </>
+                ) : clearBusy ? (
+                  "Clearing…"
+                ) : (
+                  "Clear History"
+                )}
               </button>
             </div>
           </div>

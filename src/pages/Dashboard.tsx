@@ -71,7 +71,8 @@ export default function Dashboard({
 }: {
   setPage: (p: string) => void;
 }) {
-  const { items, logs, restocks, damageRecords } = useInventory();
+  const { items, logs, restocks, damageRecords, lastClearedAt } =
+    useInventory();
 
   const low = items.filter((i) => getStockStatus(i) === "low").length;
   const out = items.filter((i) => getStockStatus(i) === "out").length;
@@ -84,6 +85,15 @@ export default function Dashboard({
       d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
     );
   };
+  const daysSinceCleared = lastClearedAt
+    ? Math.floor(
+        (now.getTime() - new Date(lastClearedAt).getTime()) /
+          (1000 * 60 * 60 * 24),
+      )
+    : null;
+  const monthlyReminderDue =
+    (daysSinceCleared === null && (logs.length > 0 || restocks.length > 0)) ||
+    (daysSinceCleared !== null && daysSinceCleared >= 30);
   // Usage Cost = materials actually consumed this month (equipment log.cost is
   // always 0 — a normal borrow/return isn't a financial loss) + any repair/
   // damage costs actually incurred this month.
@@ -218,6 +228,25 @@ export default function Dashboard({
           <span className="hidden sm:inline">Export Report</span>
         </button>
       </div>
+
+      {monthlyReminderDue && (
+        <div className="mx-4 md:mx-6 flex items-start gap-3 p-3 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-800">
+          <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-yellow-700 dark:text-yellow-300 flex-1">
+            {daysSinceCleared === null
+              ? "History hasn't been cleared yet — "
+              : `It's been ${daysSinceCleared} days since history was last cleared — `}
+            head to <span className="font-medium">Settings → Database</span> to
+            review and clear old records.
+          </p>
+          <button
+            onClick={() => setPage("Settings")}
+            className="flex-shrink-0 text-xs font-medium text-yellow-700 dark:text-yellow-300 underline hover:no-underline"
+          >
+            Go to Settings
+          </button>
+        </div>
+      )}
 
       <div className="px-4 md:px-6 space-y-6 pb-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
