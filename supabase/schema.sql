@@ -198,6 +198,31 @@ begin
 end;
 $$;
 
+-- Promotes/demotes a staff account between 'admin' and 'staff'. Same
+-- last-admin protection as delete_staff — demoting the only remaining
+-- admin would leave the app with nobody able to manage it.
+create or replace function set_staff_role(p_staff_id uuid, p_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  admin_count int;
+begin
+  if p_role not in ('admin', 'staff') then
+    raise exception 'Invalid role.';
+  end if;
+  if p_role = 'staff' then
+    select count(*) into admin_count from staff where role = 'admin';
+    if admin_count <= 1 and exists (select 1 from staff where id = p_staff_id and role = 'admin') then
+      raise exception 'Cannot demote the last remaining admin account.';
+    end if;
+  end if;
+  update staff set role = p_role where id = p_staff_id;
+end;
+$$;
+
 -- ─── A safe public view: name + role only, never the pin hash ──────────────
 create or replace view staff_public as
   select id, name, role from staff;
@@ -294,6 +319,7 @@ grant execute on function verify_pin(uuid, text) to anon, authenticated;
 grant execute on function create_staff(text, text, text) to anon, authenticated;
 grant execute on function set_pin(uuid, text) to anon, authenticated;
 grant execute on function delete_staff(uuid) to anon, authenticated;
+grant execute on function set_staff_role(uuid, text) to anon, authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Seed data — your starting admin account + the same items from the demo

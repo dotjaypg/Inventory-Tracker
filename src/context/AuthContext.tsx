@@ -28,6 +28,10 @@ interface AuthContextValue {
     newPin: string,
   ) => Promise<{ ok: boolean; message?: string }>;
   deleteStaff: (staffId: string) => Promise<{ ok: boolean; message?: string }>;
+  updateStaffRole: (
+    staffId: string,
+    role: "admin" | "staff",
+  ) => Promise<{ ok: boolean; message?: string }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -133,6 +137,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  async function updateStaffRole(
+    staffId: string,
+    role: "admin" | "staff",
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!supabase)
+      return { ok: false, message: "Supabase isn't configured yet." };
+    const { error } = await supabase.rpc("set_staff_role", {
+      p_staff_id: staffId,
+      p_role: role,
+    });
+    if (error) return { ok: false, message: error.message };
+    // Keep the current session's role in sync if the admin changed their own role.
+    if (currentStaff?.id === staffId) {
+      setCurrentStaff({ ...currentStaff, role });
+    }
+    await refreshStaffList();
+    return { ok: true };
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -145,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         addStaff,
         resetPin,
         deleteStaff,
+        updateStaffRole,
       }}
     >
       {children}
