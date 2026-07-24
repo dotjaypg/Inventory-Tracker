@@ -1,10 +1,8 @@
 import { useRef, useState } from "react";
 import {
-  Tag,
   UserCog,
   Database,
   Bell,
-  Palette,
   Plus,
   RotateCcw,
   Trash2,
@@ -17,16 +15,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
-import { CATEGORIES } from "../types";
 import Avatar from "../components/Avatar";
 import { csvTemplate, downloadCSV, parseInventoryCSV } from "../lib/csv";
 
 const sections = [
   { id: "users", label: "Staff & PINs", icon: UserCog },
-  { id: "categories", label: "Categories", icon: Tag },
   { id: "database", label: "Database", icon: Database },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "theme", label: "Theme", icon: Palette },
 ];
 
 export default function SettingsPage() {
@@ -267,49 +262,6 @@ export default function SettingsPage() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
-
-        {activeSection === "categories" && (
-          <div className="max-w-xl space-y-5">
-            <h3 className="font-semibold text-foreground text-lg">
-              Categories
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              These four categories are fixed in the schema (kept simple on
-              purpose). To add a new one, your developer adds it to the
-              `category` check constraint in{" "}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                schema.sql
-              </code>{" "}
-              and the
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                CATEGORIES
-              </code>{" "}
-              map in{" "}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                types.ts
-              </code>
-              .
-            </p>
-            <div className="bg-card rounded-xl border border-border shadow-sm divide-y divide-border">
-              {(Object.keys(CATEGORIES) as Array<keyof typeof CATEGORIES>).map(
-                (key) => (
-                  <div key={key} className="flex items-center gap-3 px-4 py-3">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: CATEGORIES[key].text }}
-                    />
-                    <span className="text-sm font-medium text-foreground">
-                      {CATEGORIES[key].label}
-                    </span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {items.filter((i) => i.category === key).length} items
-                    </span>
-                  </div>
-                ),
-              )}
             </div>
           </div>
         )}
@@ -576,25 +528,6 @@ export default function SettingsPage() {
                   </div>
                 ),
               )}
-            </div>
-          </div>
-        )}
-
-        {activeSection === "theme" && (
-          <div className="max-w-xl space-y-5">
-            <h3 className="font-semibold text-foreground text-lg">Theme</h3>
-            <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
-              <p className="text-sm text-muted-foreground">
-                Colors are set in{" "}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                  src/index.css
-                </code>{" "}
-                — they match your Figma design exactly (brand red{" "}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                  #C8102E
-                </code>
-                ).
-              </p>
             </div>
           </div>
         )}
