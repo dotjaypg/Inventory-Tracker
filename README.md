@@ -68,6 +68,9 @@ The easiest way is to have the old owner **transfer the Supabase project** to yo
 **Project Settings > General > Transfer project**.
 The URL and keys stay the same, so nothing in the app or Vercel needs to change. After the transfer, reset the database password and save it.
 
+Then update the existing database with the latest fixes (safe, does not delete data):
+**SQL Editor > New query**, paste everything in `inventory-app > supabase > fix-clear-history.sql`, and click **Run**.
+
 ---
 
 ## Project structure
@@ -76,17 +79,30 @@ The URL and keys stay the same, so nothing in the app or Vercel needs to change.
 inventory-app
 ├── .env                  Supabase URL + key (not in Git)
 ├── supabase
-│   └── schema.sql        The whole database (tables, PIN functions, permissions)
+│   ├── schema.sql        The whole database. NEW projects only (deletes everything first)
+│   └── fix-clear-history.sql  Safe update for an EXISTING database (no data loss)
 └── src
     ├── App.tsx           Sidebar and which pages admin/staff can see
     ├── types.ts          Data types and categories
     ├── lib
-    │   └── supabase.ts   Supabase connection
+    │   ├── supabase.ts   Supabase connection
+    │   └── history.ts    When to show the "clear history" reminder
     ├── context
     │   ├── AuthContext.tsx       Login, staff, PINs, roles
     │   └── InventoryContext.tsx  All database reads and writes
     └── pages             One file per screen (Inventory, Requests, Restock, etc.)
 ```
+
+## Recent fixes
+
+| Problem | Fix | File |
+|---|---|---|
+| Clear History showed "Something went wrong" | Supabase blocks deletes with no filter, so the function now uses `where id is not null`. Errors now show the real reason. | `inventory-app > supabase > fix-clear-history.sql`, `inventory-app > src > context > InventoryContext.tsx` |
+| "Clear history" warning showed after just 1 pull-out | Now only shows when the oldest record is 30+ days old, or 30+ days after the last clear | `inventory-app > src > lib > history.ts` |
+| "Pulled Out" count on Employees stuck at 0 | Now counts by the staff account that was logged in during the pull-out | `inventory-app > src > pages > Employees.tsx` |
+| Refreshing the page logged you out | Login now survives a refresh. You are logged out when the tab is closed, you click logout, or after 12 hours. | `inventory-app > src > context > AuthContext.tsx` |
+
+> **Using an existing database?** Run `inventory-app > supabase > fix-clear-history.sql` once in the SQL Editor (on both staging and production databases) or Clear History will keep failing.
 
 ## Good to know
 

@@ -699,7 +699,16 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       p_clear_logs: clearLogs,
       p_clear_restocks: clearRestocks,
     });
-    if (error) return { ok: false, message: friendlyError(error) };
+    if (error) {
+      console.error("clear_history failed:", error);
+      return {
+        ok: false,
+        message: friendlyError(
+          error,
+          `Could not clear history: ${error.message || "unknown error"}`,
+        ),
+      };
+    }
     await refresh();
     return { ok: true };
   }

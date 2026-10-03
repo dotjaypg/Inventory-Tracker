@@ -247,11 +247,13 @@ security definer
 set search_path = public
 as $$
 begin
+  -- "where id is not null" matches every row. Supabase blocks a DELETE that
+  -- has no WHERE clause at all (safeupdate), which made Clear History fail.
   if p_clear_logs then
-    delete from logs;
+    delete from logs where id is not null;
   end if;
   if p_clear_restocks then
-    delete from restocks;
+    delete from restocks where id is not null;
   end if;
   insert into app_settings (key, value, updated_at)
   values ('last_cleared_at', now()::text, now())

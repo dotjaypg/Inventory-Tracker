@@ -17,6 +17,7 @@ import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
 import Avatar from "../components/Avatar";
 import { csvTemplate, downloadCSV, parseInventoryCSV } from "../lib/csv";
+import { getClearReminder } from "../lib/history";
 
 const sections = [
   { id: "users", label: "Staff & PINs", icon: UserCog },
@@ -70,18 +71,11 @@ export default function SettingsPage() {
   const [clearError, setClearError] = useState("");
   const [clearDone, setClearDone] = useState(false);
 
-  const daysSinceCleared = lastClearedAt
-    ? Math.floor(
-        (Date.now() - new Date(lastClearedAt).getTime()) /
-          (1000 * 60 * 60 * 24),
-      )
-    : null;
-  // Nudge once at least a month has passed since the last clear (or since
-  // ever, if history has never been cleared and there's actually something
-  // worth clearing yet).
-  const monthlyReminderDue =
-    (daysSinceCleared === null && (logs.length > 0 || restocks.length > 0)) ||
-    (daysSinceCleared !== null && daysSinceCleared >= 30);
+  const {
+    due: monthlyReminderDue,
+    daysSinceCleared,
+    oldestRecordDays,
+  } = getClearReminder(lastClearedAt, logs, restocks);
 
   async function handleClearHistory() {
     setClearBusy(true);
@@ -376,7 +370,7 @@ export default function SettingsPage() {
                 <div className="flex-1">
                   <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
                     {daysSinceCleared === null
-                      ? "History hasn't been cleared yet."
+                      ? `History hasn't been cleared yet. Your oldest record is ${oldestRecordDays} days old.`
                       : `It's been ${daysSinceCleared} days since history was last cleared.`}
                   </p>
                   <p className="text-xs text-yellow-700/80 dark:text-yellow-300/80 mt-0.5">

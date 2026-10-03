@@ -12,7 +12,7 @@ interface AuthContextValue {
   staffList: Staff[];
   currentStaff: Staff | null;
   loading: boolean;
-  refreshStaffList: () => Promise<void>;
+  refreshStaffList: () => Promise<Staff[]>;
   login: (
     staffId: string,
     pin: string,
@@ -36,18 +36,60 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Keeps you signed in when the page is reloaded.
+// sessionStorage survives a refresh but is cleared when the tab/browser is
+// closed, which suits shared office computers. Also expires after 12 hours.
+const SESSION_KEY = "inventrack_session";
+const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+function saveSession(staffId: string) {
+  try {
+    sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({ id: staffId, at: Date.now() }),
+    );
+  } catch {
+    /* storage unavailable: user just logs in again after refresh */
+  }
+}
+
+function readSession(): string | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const { id, at } = JSON.parse(raw);
+    if (typeof id !== "string" || Date.now() - at > SESSION_MAX_AGE_MS) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function refreshStaffList() {
-    if (!supabase) return;
+  async function refreshStaffList(): Promise<Staff[]> {
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from("staff_public")
       .select("*")
       .order("name");
-    if (!error && data) setStaffList(data as Staff[]);
+    if (error || !data) return [];
+    setStaffList(data as Staff[]);
+    return data as Staff[];
   }
 
   useEffect(() => {
@@ -56,9 +98,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
-      await refreshStaffList();
-      // Intentionally not restoring any previous session here — every page
-      // load/visit starts at the Login screen, no "stay logged in" behavior.
+      const list = await refreshStaffList();
+      // Restore the signed-in staff after a page refresh. Uses the fresh
+      // staff list, so a deleted account or changed role is respected.
+      const savedId = readSession();
+      if (savedId) {
+        const match = list.find((s) => s.id === savedId);
+        if (match) setCurrentStaff(match);
+        else clearSession();
+      }
       setLoading(false);
     }
     init();
@@ -81,11 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!matched) return { ok: false, message: "Staff record not found." };
 
     setCurrentStaff(matched);
+    saveSession(matched.id);
     return { ok: true };
   }
 
   function logout() {
     setCurrentStaff(null);
+    clearSession();
   }
 
   async function addStaff(

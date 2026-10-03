@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { useInventory } from "../context/InventoryContext";
 import { getStockStatus, CATEGORIES } from "../types";
+import { getClearReminder } from "../lib/history";
 import StatusBadge from "../components/StatusBadge";
 import Avatar from "../components/Avatar";
 import ItemIcon from "../components/ItemIcon";
@@ -85,15 +86,11 @@ export default function Dashboard({
       d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
     );
   };
-  const daysSinceCleared = lastClearedAt
-    ? Math.floor(
-        (now.getTime() - new Date(lastClearedAt).getTime()) /
-          (1000 * 60 * 60 * 24),
-      )
-    : null;
-  const monthlyReminderDue =
-    (daysSinceCleared === null && (logs.length > 0 || restocks.length > 0)) ||
-    (daysSinceCleared !== null && daysSinceCleared >= 30);
+  const {
+    due: monthlyReminderDue,
+    daysSinceCleared,
+    oldestRecordDays,
+  } = getClearReminder(lastClearedAt, logs, restocks);
   // Usage Cost = materials actually consumed this month (equipment log.cost is
   // always 0 — a normal borrow/return isn't a financial loss) + any repair/
   // damage costs actually incurred this month.
@@ -234,7 +231,7 @@ export default function Dashboard({
           <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
           <p className="text-sm text-yellow-700 dark:text-yellow-300 flex-1">
             {daysSinceCleared === null
-              ? "History hasn't been cleared yet — "
+              ? `History hasn't been cleared yet and your oldest record is ${oldestRecordDays} days old. `
               : `It's been ${daysSinceCleared} days since history was last cleared — `}
             head to <span className="font-medium">Settings → Database</span> to
             review and clear old records.

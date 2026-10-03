@@ -34,7 +34,10 @@ export default function EmployeesPage({
   );
 
   function stats(name: string) {
-    const own = logs.filter((l) => l.employee === name);
+    // Count by the logged-in staff account that confirmed the pull-out.
+    // (l.employee holds the typed "name / department" text, which never
+    // matches a staff account name, so this used to stay stuck at 0.)
+    const own = logs.filter((l) => l.confirmedBy === name);
     return {
       borrowed: own.length,
       active: own.filter((l) => l.status === "active").length,
