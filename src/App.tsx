@@ -29,6 +29,7 @@ import EmployeesPage from "./pages/Employees";
 import ReportsPage from "./pages/Reports";
 import SettingsPage from "./pages/Settings";
 import Avatar from "./components/Avatar";
+import NotificationBell from "./components/NotificationBell";
 
 const ALL_NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
@@ -330,6 +331,9 @@ export default function App() {
           <h1 className="text-base font-semibold text-foreground truncate">
             {activePage}
           </h1>
+          <div className="ml-auto">
+            <NotificationBell setPage={selectPage} />
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto">{renderPage()}</main>
       </div>

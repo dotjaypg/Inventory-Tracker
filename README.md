@@ -86,7 +86,8 @@ inventory-app
     ├── types.ts          Data types and categories
     ├── lib
     │   ├── supabase.ts   Supabase connection
-    │   └── history.ts    When to show the "clear history" reminder
+    │   ├── history.ts    When to show the "clear history" reminder
+    │   └── notifications.ts  Builds the bell alerts (low stock, overdue, new)
     ├── context
     │   ├── AuthContext.tsx       Login, staff, PINs, roles
     │   └── InventoryContext.tsx  All database reads and writes
@@ -102,6 +103,7 @@ inventory-app
 | "Pulled Out" count on Employees stuck at 0 | Now counts by the staff account that was logged in during the pull-out | `inventory-app > src > pages > Employees.tsx` |
 | "Borrow Log" badge looked stuck at 0 | Not a bug: it only counts equipment not yet returned. Materials are logged as used up. Added a "not yet returned" tooltip. | `inventory-app > src > pages > Requests.tsx` |
 | Clear History could erase borrowed items that were not returned yet | Clear History is now blocked (in the app and in the database) until every borrowed item is returned | `inventory-app > src > pages > Settings.tsx`, `inventory-app > supabase > fix-clear-history.sql` |
+| Notifications tab was only a placeholder | Now working: bell icon in the top bar for low stock, overdue borrowed items, and new pull-outs. Admins turn each one on or off and set the overdue days in **Settings > Notifications**. Data refreshes every minute. | `inventory-app > src > components > NotificationBell.tsx`, `inventory-app > src > lib > notifications.ts` |
 | Refreshing the page logged you out | Login now survives a refresh. You are logged out when the tab is closed, you click logout, or after 12 hours. | `inventory-app > src > context > AuthContext.tsx` |
 
 > **Using an existing database?** Run `inventory-app > supabase > fix-clear-history.sql` once in the SQL Editor (on both staging and production databases) or Clear History will keep failing.

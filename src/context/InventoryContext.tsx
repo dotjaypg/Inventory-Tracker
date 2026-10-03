@@ -15,6 +15,8 @@ import {
   DamageRecord,
   CategoryKey,
   unitCost,
+  NotificationSettings,
+  DEFAULT_NOTIFICATION_SETTINGS,
 } from "../types";
 import {
   seedItems,
@@ -102,6 +104,10 @@ interface InventoryContextValue {
   usingMockData: boolean;
   dbSizeMb: number | null;
   lastClearedAt: string | null;
+  notificationSettings: NotificationSettings;
+  updateNotificationSettings: (
+    patch: Partial<NotificationSettings>,
+  ) => Promise<{ ok: boolean; message?: string }>;
   refresh: () => Promise<void>;
   addItem: (input: NewItemInput) => Promise<{ ok: boolean; message?: string }>;
   updateItem: (
@@ -129,6 +135,36 @@ interface InventoryContextValue {
 }
 
 const InventoryContext = createContext<InventoryContextValue | null>(null);
+
+// app_settings keys used for notification settings.
+const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
+  lowStock: "notif_low_stock",
+  newPullOuts: "notif_new_pullouts",
+  overdue: "notif_overdue",
+  overdueDays: "notif_overdue_days",
+};
+
+function parseNotificationSettings(
+  map: Map<string, string | null>,
+): NotificationSettings {
+  const bool = (key: string, fallback: boolean) => {
+    const v = map.get(key);
+    return v === undefined || v === null ? fallback : v === "true";
+  };
+  const days = parseInt(map.get(NOTIF_KEYS.overdueDays) ?? "", 10);
+  return {
+    lowStock: bool(NOTIF_KEYS.lowStock, DEFAULT_NOTIFICATION_SETTINGS.lowStock),
+    newPullOuts: bool(
+      NOTIF_KEYS.newPullOuts,
+      DEFAULT_NOTIFICATION_SETTINGS.newPullOuts,
+    ),
+    overdue: bool(NOTIF_KEYS.overdue, DEFAULT_NOTIFICATION_SETTINGS.overdue),
+    overdueDays:
+      Number.isNaN(days) || days < 1
+        ? DEFAULT_NOTIFICATION_SETTINGS.overdueDays
+        : days,
+  };
+}
 
 function rowToItem(row: any): InventoryItem {
   return {
@@ -211,6 +247,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [damageRecords, setDamageRecords] = useState<DamageRecord[]>([]);
   const [dbSizeMb, setDbSizeMb] = useState<number | null>(null);
   const [lastClearedAt, setLastClearedAt] = useState<string | null>(null);
+  const [notificationSettings, setNotificationSettings] =
+    useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [loading, setLoading] = useState(true);
   const usingMockData = !isSupabaseConfigured;
 
@@ -249,24 +287,66 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           .select("*")
           .order("date", { ascending: false }),
         supabase.rpc("get_db_size_mb"),
-        supabase
-          .from("app_settings")
-          .select("*")
-          .eq("key", "last_cleared_at")
-          .maybeSingle(),
+        supabase.from("app_settings").select("key, value"),
       ]);
     if (itemsRes.data) setItems(itemsRes.data.map(rowToItem));
     if (logsRes.data) setLogs(logsRes.data.map(rowToLog));
     if (restocksRes.data) setRestocks(restocksRes.data.map(rowToRestock));
     if (damageRes.data) setDamageRecords(damageRes.data.map(rowToDamageRecord));
     if (typeof sizeRes.data === "number") setDbSizeMb(sizeRes.data);
-    setLastClearedAt(settingsRes.data?.value ?? null);
+    if (settingsRes.data) {
+      const settingsMap = new Map<string, string | null>(
+        settingsRes.data.map((r: any) => [r.key, r.value]),
+      );
+      setLastClearedAt(settingsMap.get("last_cleared_at") ?? null);
+      setNotificationSettings(parseNotificationSettings(settingsMap));
+    }
     setLoading(false);
   }
 
   useEffect(() => {
     refresh();
   }, []);
+
+  // Keep data (and notifications) fresh: reload every minute while the tab
+  // is visible, and right away when the person comes back to the tab.
+  useEffect(() => {
+    if (!supabase) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function updateNotificationSettings(
+    patch: Partial<NotificationSettings>,
+  ): Promise<{ ok: boolean; message?: string }> {
+    const previous = notificationSettings;
+    const next = { ...previous, ...patch };
+    setNotificationSettings(next); // show the change immediately
+    if (!supabase) return { ok: true };
+
+    const now = new Date().toISOString();
+    const rows = (Object.keys(patch) as (keyof NotificationSettings)[]).map(
+      (k) => ({ key: NOTIF_KEYS[k], value: String(next[k]), updated_at: now }),
+    );
+    const { error } = await supabase.from("app_settings").upsert(rows);
+    if (error) {
+      console.error("Saving notification settings failed:", error);
+      setNotificationSettings(previous);
+      return {
+        ok: false,
+        message: friendlyError(error, "Could not save. Please try again."),
+      };
+    }
+    return { ok: true };
+  }
 
   async function addItem(
     input: NewItemInput,
@@ -725,6 +805,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         usingMockData,
         dbSizeMb,
         lastClearedAt,
+        notificationSettings,
+        updateNotificationSettings,
         refresh,
         addItem,
         updateItem,

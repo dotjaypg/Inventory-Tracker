@@ -39,7 +39,35 @@ export default function SettingsPage() {
     dbSizeMb,
     lastClearedAt,
     clearHistory,
+    notificationSettings,
+    updateNotificationSettings,
   } = useInventory();
+  const [notifSaveState, setNotifSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [notifError, setNotifError] = useState("");
+  const [overdueDaysDraft, setOverdueDaysDraft] = useState<string | null>(null);
+
+  async function saveNotif(patch: Parameters<typeof updateNotificationSettings>[0]) {
+    setNotifSaveState("saving");
+    setNotifError("");
+    const result = await updateNotificationSettings(patch);
+    if (!result.ok) {
+      setNotifSaveState("error");
+      setNotifError(result.message || "Could not save.");
+      return;
+    }
+    setNotifSaveState("saved");
+    setTimeout(() => setNotifSaveState("idle"), 1500);
+  }
+
+  function commitOverdueDays() {
+    if (overdueDaysDraft === null) return;
+    const n = parseInt(overdueDaysDraft, 10);
+    setOverdueDaysDraft(null);
+    if (Number.isNaN(n) || n < 1 || n === notificationSettings.overdueDays) return;
+    saveNotif({ overdueDays: Math.min(n, 365) });
+  }
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
@@ -504,30 +532,111 @@ export default function SettingsPage() {
             <h3 className="font-semibold text-foreground text-lg">
               Notification Settings
             </h3>
-            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Not wired up yet — this is a placeholder for when email/SMS
-                alerts get added later.
-              </p>
-              {["Low stock alerts", "New borrow requests", "Overdue items"].map(
-                (label) => (
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-1">
+              <div className="flex items-start justify-between gap-3 pb-3">
+                <p className="text-sm text-muted-foreground">
+                  Alerts show in the bell icon at the top right of the app.
+                  These settings apply to everyone.
+                </p>
+                <span className="text-xs flex-shrink-0 mt-0.5">
+                  {notifSaveState === "saving" && (
+                    <span className="text-muted-foreground">Saving…</span>
+                  )}
+                  {notifSaveState === "saved" && (
+                    <span className="text-green-600 dark:text-green-400">
+                      Saved
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {(
+                [
+                  {
+                    key: "lowStock",
+                    label: "Low stock alerts",
+                    desc: "When an item reaches its low-stock number or runs out. Shown to everyone.",
+                  },
+                  {
+                    key: "newPullOuts",
+                    label: "New pull-outs and borrows",
+                    desc: "Each new pull-out until the admin has seen it. Shown to admins only.",
+                  },
+                  {
+                    key: "overdue",
+                    label: "Overdue items",
+                    desc: "Borrowed items not returned in time. Shown to everyone.",
+                  },
+                ] as const
+              ).map(({ key, label, desc }) => {
+                const on = notificationSettings[key];
+                return (
                   <div
-                    key={label}
-                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                    key={key}
+                    className="flex items-center justify-between gap-4 py-3 border-t border-border"
                   >
-                    <span className="text-sm text-foreground">{label}</span>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        defaultChecked
-                        disabled
+                    <div>
+                      <div className="text-sm font-medium text-foreground">
+                        {label}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {desc}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={on}
+                      aria-label={label}
+                      disabled={notifSaveState === "saving"}
+                      onClick={() => saveNotif({ [key]: !on })}
+                      className={`flex-shrink-0 w-10 h-5 rounded-full relative transition-colors disabled:opacity-60 ${
+                        on ? "bg-primary" : "bg-muted border border-border"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                          on ? "translate-x-5" : "translate-x-0"
+                        }`}
                       />
-                      <div className="w-10 h-5 bg-muted peer-checked:bg-primary rounded-full opacity-50" />
-                      <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-5 transition-all" />
-                    </label>
+                    </button>
                   </div>
-                ),
+                );
+              })}
+
+              {notificationSettings.overdue && (
+                <div className="flex items-center justify-between gap-4 py-3 border-t border-border">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">
+                      Mark as overdue after
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Days since the item was borrowed.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={
+                        overdueDaysDraft ??
+                        String(notificationSettings.overdueDays)
+                      }
+                      onChange={(e) => setOverdueDaysDraft(e.target.value)}
+                      onBlur={commitOverdueDays}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitOverdueDays();
+                      }}
+                      className="w-16 px-2 py-1.5 bg-input-background border border-border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    />
+                    <span className="text-sm text-muted-foreground">days</span>
+                  </div>
+                </div>
+              )}
+
+              {notifError && (
+                <p className="text-xs text-destructive pt-2">{notifError}</p>
               )}
             </div>
           </div>
