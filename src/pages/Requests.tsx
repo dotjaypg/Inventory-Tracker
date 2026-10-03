@@ -118,7 +118,14 @@ export default function Requests() {
           }`}
         >
           Borrow Log
-          <span className="ml-2 bg-primary text-white text-xs px-1.5 py-0.5 rounded-full">
+          {/* Counts only returnable items (equipment) still out. Material
+              pull-outs are consumed, so they are logged as finished and do
+              not add to this number. */}
+          <span
+            title="Items borrowed and not yet returned"
+            aria-label="Items borrowed and not yet returned"
+            className="ml-2 bg-primary text-white text-xs px-1.5 py-0.5 rounded-full cursor-help"
+          >
             {logs.filter((r) => r.status === "active").length}
           </span>
         </button>
