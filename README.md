@@ -105,6 +105,7 @@ inventory-app
 | Clear History could erase borrowed items that were not returned yet | Clear History is now blocked (in the app and in the database) until every borrowed item is returned | `inventory-app > src > pages > Settings.tsx`, `inventory-app > supabase > fix-clear-history.sql` |
 | Notifications tab was only a placeholder | Now working: bell icon in the top bar for low stock, overdue borrowed items, and new pull-outs. Admins turn each one on or off and set the overdue days in **Settings > Notifications**. Data refreshes every minute. | `inventory-app > src > components > NotificationBell.tsx`, `inventory-app > src > lib > notifications.ts` |
 | Exported files had fixed names | Every export is now named `name-YYYY-MM-DD.csv` (e.g. `inventory-2026-10-04.csv`) using `datedFilename()` | `inventory-app > src > lib > csv.ts` |
+| Restock page was hard to use (form far below the list on phones, name typed by hand) | Items needing restock are listed first with a Restock button. Tapping opens a popup with +/- and quick-add buttons, shows "stock after", and records the logged-in staff automatically. | `inventory-app > src > pages > RestockPage.tsx` |
 | Refreshing the page logged you out | Login now survives a refresh. You are logged out when the tab is closed, you click logout, or after 12 hours. | `inventory-app > src > context > AuthContext.tsx` |
 
 > **Using an existing database?** Run `inventory-app > supabase > fix-clear-history.sql` once in the SQL Editor (on both staging and production databases) or Clear History will keep failing.
