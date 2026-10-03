@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search, Download, X, Printer, RotateCcw } from "lucide-react";
+import { downloadCSV, datedFilename } from "../lib/csv";
 import { useInventory } from "../context/InventoryContext";
 import { CATEGORIES, LogEntry } from "../types";
 import StatusBadge from "../components/StatusBadge";
@@ -60,11 +61,10 @@ export default function HistoryPage() {
         l.approvedBy || "",
       ]),
     );
-    const csv = rows.map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = "history-log.csv";
-    a.click();
+    const csv = rows
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    downloadCSV(datedFilename("history-log"), csv);
   }
 
   return (

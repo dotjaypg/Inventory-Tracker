@@ -16,7 +16,12 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
 import Avatar from "../components/Avatar";
-import { csvTemplate, downloadCSV, parseInventoryCSV } from "../lib/csv";
+import {
+  csvTemplate,
+  downloadCSV,
+  parseInventoryCSV,
+  datedFilename,
+} from "../lib/csv";
 import { getClearReminder } from "../lib/history";
 
 const sections = [
@@ -129,7 +134,7 @@ export default function SettingsPage() {
   }
 
   function handleDownloadTemplate() {
-    downloadCSV("inventory-template.csv", csvTemplate());
+    downloadCSV(datedFilename("inventory-template"), csvTemplate());
   }
 
   function handleBulkImportClick() {

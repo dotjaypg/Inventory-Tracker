@@ -14,7 +14,12 @@ import {
 } from "lucide-react";
 import { useInventory } from "../context/InventoryContext";
 import { InventoryItem, getStockStatus, CATEGORIES } from "../types";
-import { itemsToCSV, downloadCSV, parseInventoryCSV } from "../lib/csv";
+import {
+  itemsToCSV,
+  downloadCSV,
+  parseInventoryCSV,
+  datedFilename,
+} from "../lib/csv";
 import StatusBadge from "../components/StatusBadge";
 import ItemIcon from "../components/ItemIcon";
 import CategoryChips, {
@@ -61,7 +66,7 @@ export default function Inventory({
   }
 
   function handleExport() {
-    downloadCSV("inventory-export.csv", itemsToCSV(items));
+    downloadCSV(datedFilename("inventory"), itemsToCSV(items));
   }
 
   function handleImportClick() {

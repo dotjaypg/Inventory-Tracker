@@ -55,6 +55,14 @@ export function csvTemplate(): string {
   return [CSV_HEADERS.join(","), example.map(escapeCSVField).join(",")].join("\n");
 }
 
+// Every exported file is named "<name>-<YYYY-MM-DD>.<ext>", using today's
+// local date, e.g. "inventory-2026-10-04.csv". Use this for ALL downloads.
+export function datedFilename(name: string, ext = "csv"): string {
+  const d = new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${name}-${date}.${ext}`;
+}
+
 export function downloadCSV(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
