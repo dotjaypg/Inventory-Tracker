@@ -1,124 +1,76 @@
-import {
-  InventoryItem,
-  LogEntry,
-  DamageRecord,
-  CATEGORIES,
-  getStockStatus,
-} from "../types";
+import { LogEntry, DamageRecord } from "../types";
 
-// ─── Shared report logic used by Reports and the Dashboard "Export Report" ──
+// ─── Monthly usage report (Reports page + Dashboard "Export Report") ─────────
+// Answers one question: how much material was used in a month, and what did
+// it cost? Cost comes from each item's pack price / units per pack, saved on
+// the pull-out at the time it happened.
 
-export type ReportPeriod = "month" | "3months" | "all";
-
-export const PERIOD_LABELS: Record<ReportPeriod, string> = {
-  month: "This month",
-  "3months": "Last 3 months",
-  all: "All time",
-};
-
-const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 function parseDate(dateStr: string): Date {
-  // "YYYY-MM-DD" is read as local time so a date never shifts a day.
   const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
   return y && m && d ? new Date(y, m - 1, d) : new Date(dateStr);
 }
 
-export function periodStart(period: ReportPeriod): Date | null {
-  const now = new Date();
-  if (period === "month") return new Date(now.getFullYear(), now.getMonth(), 1);
-  if (period === "3months") return new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  return null;
+function sameMonth(dateStr: string, year: number, month: number) {
+  const d = parseDate(dateStr);
+  return d.getFullYear() === year && d.getMonth() === month;
 }
 
-function inPeriod(dateStr: string | null, period: ReportPeriod): boolean {
-  if (!dateStr) return false;
-  const start = periodStart(period);
-  return start === null || parseDate(dateStr) >= start;
+export interface MaterialUsage {
+  item: string;
+  unit: string;
+  qty: number; // total amount used this month
+  times: number; // number of pull-outs
+  cost: number; // pesos
 }
 
-export interface Report {
-  period: ReportPeriod;
-  pullOuts: LogEntry[];
-  damage: DamageRecord[];
+export interface MonthlyUsage {
+  year: number;
+  month: number; // 0-11
+  label: string; // "October 2026"
+  materials: MaterialUsage[];
   materialsCost: number;
-  damageCost: number;
+  repairs: DamageRecord[];
+  repairsCost: number;
   totalCost: number;
-  borrowedNow: LogEntry[];
-  needsRestock: InventoryItem[];
-  mostUsed: { name: string; times: number }[];
-  costByItem: { name: string; cost: number }[];
-  monthly: { month: string; pullOuts: number; returned: number }[];
-  byCategory: { key: keyof typeof CATEGORIES; name: string; value: number }[];
+  unpricedCount: number; // materials used that have no price set
 }
 
-export function buildReport(
-  items: InventoryItem[],
+export function buildMonthlyUsage(
   logs: LogEntry[],
   damageRecords: DamageRecord[],
-  period: ReportPeriod,
-): Report {
-  const pullOuts = logs.filter((l) => inPeriod(l.borrowDate, period));
-  const damage = damageRecords.filter((d) => inPeriod(d.date, period));
-  const materialsCost = pullOuts.reduce((s, l) => s + l.cost, 0);
-  const damageCost = damage.reduce((s, d) => s + d.cost, 0);
-
-  // "Most used" counts how many times an item was pulled out, so items
-  // counted in different units (sheets vs pcs) can be compared fairly.
-  const timesMap: Record<string, number> = {};
-  pullOuts.forEach((l) => (timesMap[l.item] = (timesMap[l.item] || 0) + 1));
-  const mostUsed = Object.entries(timesMap)
-    .map(([name, times]) => ({ name, times }))
-    .sort((a, b) => b.times - a.times)
-    .slice(0, 5);
-
-  const costMap: Record<string, number> = {};
-  [...pullOuts.map((l) => ({ item: l.item, cost: l.cost })), ...damage.map((d) => ({ item: d.item, cost: d.cost }))]
-    .filter((x) => x.cost > 0)
-    .forEach((x) => (costMap[x.item] = (costMap[x.item] || 0) + x.cost));
-  const costByItem = Object.entries(costMap)
-    .map(([name, cost]) => ({ name, cost }))
-    .sort((a, b) => b.cost - a.cost)
-    .slice(0, 5);
-
-  // Last 6 months, always (so the chart has context whatever the period).
-  const now = new Date();
-  const monthly = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    return { y: d.getFullYear(), m: d.getMonth(), month: MONTH_LABELS[d.getMonth()], pullOuts: 0, returned: 0 };
-  });
-  const find = (dateStr: string) => {
-    const d = parseDate(dateStr);
-    return monthly.find((x) => x.y === d.getFullYear() && x.m === d.getMonth());
-  };
-  logs.forEach((l) => {
-    const a = find(l.borrowDate);
-    if (a) a.pullOuts++;
-    if (l.needsReturn && l.returnedAt) {
-      const b = find(l.returnedAt);
-      if (b) b.returned++;
-    }
-  });
-
-  const byCategory = (Object.keys(CATEGORIES) as (keyof typeof CATEGORIES)[])
-    .map((key) => ({ key, name: CATEGORIES[key].label, value: items.filter((i) => i.category === key).length }))
-    .filter((c) => c.value > 0);
-
+  year: number,
+  month: number,
+): MonthlyUsage {
+  const map = new Map<string, MaterialUsage>();
+  logs
+    .filter((l) => !l.needsReturn && sameMonth(l.borrowDate, year, month))
+    .forEach((l) => {
+      const key = `${l.item}|${l.unit}`;
+      const m = map.get(key) || { item: l.item, unit: l.unit, qty: 0, times: 0, cost: 0 };
+      m.qty += l.qty;
+      m.times += 1;
+      m.cost += l.cost;
+      map.set(key, m);
+    });
+  const materials = [...map.values()].sort((a, b) => b.cost - a.cost || b.qty - a.qty);
+  const repairs = damageRecords.filter((d) => sameMonth(d.date, year, month));
+  const materialsCost = materials.reduce((s, m) => s + m.cost, 0);
+  const repairsCost = repairs.reduce((s, d) => s + d.cost, 0);
   return {
-    period,
-    pullOuts,
-    damage,
+    year,
+    month,
+    label: `${MONTH_NAMES[month]} ${year}`,
+    materials,
     materialsCost,
-    damageCost,
-    totalCost: materialsCost + damageCost,
-    borrowedNow: logs.filter((l) => l.status === "active" && l.needsReturn),
-    needsRestock: items
-      .filter((i) => getStockStatus(i) !== "available")
-      .sort((a, b) => a.stock / Math.max(a.minStock, 1) - b.stock / Math.max(b.minStock, 1)),
-    mostUsed,
-    costByItem,
-    monthly: monthly.map(({ month, pullOuts, returned }) => ({ month, pullOuts, returned })),
-    byCategory,
+    repairs,
+    repairsCost,
+    totalCost: materialsCost + repairsCost,
+    unpricedCount: materials.filter((m) => m.cost === 0).length,
   };
 }
 
@@ -127,48 +79,21 @@ function esc(v: string | number): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-// A spreadsheet-friendly report (opens in Excel / Google Sheets).
-export function reportToCSV(r: Report): string {
+export function usageToCSV(u: MonthlyUsage): string {
   const lines: string[] = [];
   const row = (...v: (string | number)[]) => lines.push(v.map(esc).join(","));
-  const peso = (n: number) => n.toFixed(2);
-
-  row("InvenTrack Report");
-  row("Period", PERIOD_LABELS[r.period]);
-  row("Generated", new Date().toLocaleString());
+  row("Monthly usage report", u.label);
   row("");
-  row("SUMMARY");
-  row("Pull-outs", r.pullOuts.length);
-  row("Materials cost (PHP)", peso(r.materialsCost));
-  row("Damage / repair cost (PHP)", peso(r.damageCost));
-  row("Total cost (PHP)", peso(r.totalCost));
-  row("Items borrowed right now", r.borrowedNow.length);
-  row("Items that need restocking", r.needsRestock.length);
+  row("Item", "Amount used", "Unit", "Times pulled out", "Cost (PHP)");
+  u.materials.forEach((m) => row(m.item, m.qty, m.unit, m.times, m.cost ? m.cost.toFixed(2) : "No price set"));
+  row("Materials total", "", "", "", u.materialsCost.toFixed(2));
+  if (u.repairs.length) {
+    row("");
+    row("Repairs", "Item", "Logged by", "", "Cost (PHP)");
+    u.repairs.forEach((d) => row(d.title, d.item, d.createdBy || "", "", d.cost.toFixed(2)));
+    row("Repairs total", "", "", "", u.repairsCost.toFixed(2));
+  }
   row("");
-  row("MOST USED ITEMS");
-  row("Item", "Times pulled out");
-  r.mostUsed.forEach((m) => row(m.name, m.times));
-  row("");
-  row("WHERE THE MONEY GOES");
-  row("Item", "Cost (PHP)");
-  r.costByItem.forEach((c) => row(c.name, peso(c.cost)));
-  row("");
-  row("NEEDS RESTOCKING");
-  row("Item", "Stock", "Unit", "Alert at");
-  r.needsRestock.forEach((i) => row(i.name, i.stock, i.unit, i.minStock));
-  row("");
-  row("BORROWED RIGHT NOW");
-  row("ID", "Item", "Qty", "Unit", "Borrowed by", "Since");
-  r.borrowedNow.forEach((l) => row(l.id, l.item, l.qty, l.unit, l.employee, l.borrowDate));
-  row("");
-  row("ALL PULL-OUTS IN THIS PERIOD");
-  row("ID", "Date", "Item", "Qty", "Unit", "Name / Dept.", "Confirmed by", "Purpose", "Status", "Cost (PHP)");
-  r.pullOuts.forEach((l) =>
-    row(l.id, l.borrowDate, l.item, l.qty, l.unit, l.employee, l.confirmedBy || "", l.purpose, l.needsReturn ? l.status : "used up", peso(l.cost)),
-  );
-  row("");
-  row("DAMAGE RECORDS");
-  row("Date", "Item", "Title", "Cost (PHP)", "Logged by");
-  r.damage.forEach((d) => row(d.date, d.item, d.title, peso(d.cost), d.createdBy || ""));
+  row("TOTAL", "", "", "", u.totalCost.toFixed(2));
   return lines.join("\n");
 }

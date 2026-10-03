@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, UserPlus, ShieldCheck, User } from "lucide-react";
+import { Search, UserPlus, ShieldCheck, User, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
 import Avatar from "../components/Avatar";
@@ -18,6 +18,9 @@ export default function EmployeesPage({
     newRole: "admin" | "staff";
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whose full activity list is open (a popup, so cards stay the same size).
+  const [activityFor, setActivityFor] = useState<string | null>(null);
+  const [activitySearch, setActivitySearch] = useState("");
   const [error, setError] = useState("");
 
   const adminCount = staffList.filter((s) => s.role === "admin").length;
@@ -39,7 +42,8 @@ export default function EmployeesPage({
     return {
       total: own.length,
       stillOut: own.filter((l) => l.status === "active" && l.needsReturn).length,
-      recent: own.slice(0, 3), // logs are already newest first
+      all: own, // logs are already newest first
+      lastActive: own[0]?.borrowDate ?? null,
     };
   }
 
@@ -143,21 +147,20 @@ export default function EmployeesPage({
                 </div>
               </div>
 
-              <div className="mt-4 flex-1">
-                <div className="text-xs font-medium text-muted-foreground mb-1.5">Recent activity</div>
-                {a.recent.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No pull-outs logged yet.</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {a.recent.map((l) => (
-                      <li key={l.id} className="flex justify-between gap-2 text-xs">
-                        <span className="text-foreground truncate">
-                          {l.item} <span className="text-muted-foreground">×{l.qty}</span>
-                        </span>
-                        <span className="text-muted-foreground flex-shrink-0">{l.borrowDate}</span>
-                      </li>
-                    ))}
-                  </ul>
+              <div className="mt-4 flex-1 flex items-center justify-between gap-2 text-xs">
+                <span className="text-muted-foreground">
+                  {a.lastActive ? `Last active ${a.lastActive}` : "No activity yet"}
+                </span>
+                {a.total > 0 && (
+                  <button
+                    onClick={() => {
+                      setActivitySearch("");
+                      setActivityFor(s.name);
+                    }}
+                    className="font-medium text-primary hover:underline flex-shrink-0"
+                  >
+                    View activity
+                  </button>
                 )}
               </div>
 
@@ -180,6 +183,75 @@ export default function EmployeesPage({
           </div>
         )}
       </div>
+
+      {activityFor && (() => {
+        const all = activity(activityFor).all;
+        const q = activitySearch.trim().toLowerCase();
+        const shown = q ? all.filter((l) => `${l.item} ${l.employee} ${l.id}`.toLowerCase().includes(q)) : all;
+        return (
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 sm:p-4"
+            onClick={() => setActivityFor(null)}
+          >
+            <div
+              className="bg-card rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[80vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">{activityFor}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {all.length} pull-out{all.length === 1 ? "" : "s"} confirmed
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActivityFor(null)}
+                  className="p-1.5 rounded-md hover:bg-muted text-muted-foreground"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="px-5 pb-3">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={activitySearch}
+                    onChange={(e) => setActivitySearch(e.target.value)}
+                    placeholder="Search item or name..."
+                    className="w-full pl-9 pr-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  />
+                </div>
+              </div>
+              <ul className="flex-1 overflow-y-auto divide-y divide-border border-t border-border">
+                {shown.map((l) => (
+                  <li key={l.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <div className="font-medium text-foreground truncate">
+                        {l.item} <span className="text-muted-foreground font-normal">×{l.qty} {l.unit}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        For {l.employee} · {l.id}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xs text-muted-foreground">{l.borrowDate}</div>
+                      {l.needsReturn && (
+                        <div className={`text-xs ${l.status === "active" ? "text-primary" : "text-green-600 dark:text-green-400"}`}>
+                          {l.status === "active" ? "Not returned" : "Returned"}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+                {shown.length === 0 && (
+                  <li className="px-5 py-8 text-center text-sm text-muted-foreground">No matches.</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        );
+      })()}
 
       {confirmTarget && (
         <div
