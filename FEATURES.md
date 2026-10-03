@@ -36,7 +36,7 @@ Sign in by picking your name and typing a 4 to 6 digit PIN. Stays signed in on r
 
 **Restock**
 - Items that need restocking are listed first.
-- Popup: count in packs or units, quick +5 / +10 / +50, price paid (prefilled from the pack price), stock-after preview.
+- Popup: count in packs or units, quick +5 / +10 / +50, price prefilled with the item's saved price (change it if the price changed, and optionally save it as the new price), total paid, stock-after preview.
 - Recent restocks shown beside the list.
 
 **Employees** (admin)

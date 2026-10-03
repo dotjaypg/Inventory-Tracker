@@ -10,7 +10,7 @@ import StatusBadge from "../components/StatusBadge";
 const STATUS_ORDER = { out: 0, low: 1, available: 2 } as const;
 
 export default function RestockPage() {
-  const { items, restocks, restockItem } = useInventory();
+  const { items, restocks, restockItem, setItemPrice, refresh } = useInventory();
   const { currentStaff } = useAuth();
 
   const [search, setSearch] = useState("");
@@ -36,20 +36,26 @@ export default function RestockPage() {
   const packSize = selectedItem?.packSize || 1;
   const hasPacks = packSize > 1;
   const unitsToAdd = countIn === "pack" ? qty * packSize : qty;
-  // Price paid: filled in from the item's pack price, but can be changed
-  // (null = use the automatic amount).
+  // Price: starts as the exact price saved on the item (per pack, or per
+  // piece if it isn't sold in packs). Can be changed if the price went up or
+  // down; then it can also be saved as the item's new price.
   const [priceText, setPriceText] = useState<string | null>(null);
-  const autoPrice = selectedItem
-    ? Math.round(unitCost(selectedItem) * unitsToAdd * 100) / 100
-    : 0;
-  const pricePaid =
-    priceText === null ? autoPrice : Math.max(0, parseFloat(priceText) || 0);
+  const [saveNewPrice, setSaveNewPrice] = useState(true);
+  const savedPrice = selectedItem?.packPrice || 0;
+  const priceEach =
+    priceText === null ? savedPrice : Math.max(0, parseFloat(priceText) || 0);
+  const priceChanged = priceText !== null && priceEach > 0 && priceEach !== savedPrice;
+  const pricePaid = Math.round((priceEach / packSize) * unitsToAdd * 100) / 100;
+  const priceLabel = hasPacks
+    ? `Price per pack of ${packSize} ${selectedItem?.unit}`
+    : `Price per ${selectedItem?.unit}`;
 
   function open(item: InventoryItem) {
     setSelectedItem(item);
     setCountIn((item.packSize || 1) > 1 ? "pack" : "unit");
     setQty(1);
     setPriceText(null);
+    setSaveNewPrice(true);
     setError("");
     setSaved(false);
   }
@@ -74,6 +80,15 @@ export default function RestockPage() {
       name: currentStaff?.name || "Unknown",
       cost: pricePaid,
     });
+    if (result.ok && priceChanged && saveNewPrice) {
+      const priceResult = await setItemPrice(selectedItem.id, priceEach);
+      if (!priceResult.ok) {
+        setSubmitting(false);
+        setError("Restocked, but the new price could not be saved. Update it in Inventory > Edit.");
+        return;
+      }
+      await refresh();
+    }
     setSubmitting(false);
     if (!result.ok) {
       setError(result.message || "Could not restock this item.");
@@ -303,23 +318,41 @@ export default function RestockPage() {
 
             <div>
               <div className="text-sm font-medium text-foreground mb-1.5">
-                Price paid (₱){" "}
-                <span className="text-muted-foreground font-normal">optional</span>
+                {priceLabel} (₱)
               </div>
               <input
                 type="number"
                 min={0}
                 step="0.01"
-                value={priceText ?? (autoPrice ? String(autoPrice) : "")}
+                value={priceText ?? (savedPrice ? String(savedPrice) : "")}
                 onChange={(e) => setPriceText(e.target.value)}
                 placeholder="e.g. 300"
                 className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                {autoPrice > 0
-                  ? "Filled in from the item's pack price. Change it if you paid a different amount."
-                  : "This item has no pack price. Type what you paid so it shows in Reports."}
+                {savedPrice > 0
+                  ? `Same as the item's saved price (₱${savedPrice.toFixed(2)}). Change it only if the price changed.`
+                  : "This item has no price yet. Type it so the cost shows in Reports."}
               </p>
+              {priceChanged && (
+                <label className="flex items-center gap-2 mt-2 text-xs text-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={saveNewPrice}
+                    onChange={(e) => setSaveNewPrice(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  Save ₱{priceEach.toFixed(2)} as this item's new price
+                </label>
+              )}
+              {pricePaid > 0 && (
+                <div className="flex items-center justify-between mt-2 text-sm">
+                  <span className="text-muted-foreground">Total paid</span>
+                  <span className="font-semibold text-foreground">
+                    ₱{pricePaid.toFixed(2)}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm flex items-center justify-between">

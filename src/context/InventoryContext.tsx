@@ -120,6 +120,10 @@ interface InventoryContextValue {
     input: NewItemInput,
   ) => Promise<{ ok: boolean; message?: string }>;
   deleteItem: (id: number) => Promise<{ ok: boolean; message?: string }>;
+  setItemPrice: (
+    id: number,
+    packPrice: number,
+  ) => Promise<{ ok: boolean; message?: string }>;
   borrowItem: (
     input: BorrowInput,
   ) => Promise<{ ok: boolean; message?: string }>;
@@ -511,6 +515,24 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return error;
   }
 
+  // Updates only an item's pack price (used when a restock was bought at a
+  // new price, so future restocks and pull-outs use it).
+  async function setItemPrice(
+    id: number,
+    packPrice: number,
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!supabase) {
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, packPrice } : i)));
+      return { ok: true };
+    }
+    const { error } = await supabase
+      .from("items")
+      .update({ pack_price: packPrice })
+      .eq("id", id);
+    if (error) return { ok: false, message: friendlyError(error) };
+    return { ok: true };
+  }
+
   async function deleteItem(
     id: number,
   ): Promise<{ ok: boolean; message?: string }> {
@@ -850,6 +872,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         addItem,
         updateItem,
         deleteItem,
+        setItemPrice,
         borrowItem,
         turnBackItem,
         restockItem,
