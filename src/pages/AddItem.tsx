@@ -4,6 +4,71 @@ import { useInventory } from "../context/InventoryContext";
 import { CategoryKey, CATEGORIES } from "../types";
 import ImageUpload from "../components/ImageUpload";
 
+const inputCls =
+  "w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
+const labelCls = "block text-sm font-medium text-foreground mb-1.5";
+const hintCls = "text-xs text-muted-foreground -mt-0.5 mb-2";
+const UNIT_SUGGESTIONS = ["pcs", "sheet", "roll", "set", "unit", "box"];
+
+function Req() {
+  return <span className="text-primary">*</span>;
+}
+
+function SectionTitle({
+  n,
+  title,
+  optional,
+}: {
+  n: number;
+  title: string;
+  optional?: boolean;
+}) {
+  return (
+    <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+      <span className="w-5 h-5 rounded-full bg-accent text-primary text-xs flex items-center justify-center">
+        {n}
+      </span>
+      {title}
+      {optional && (
+        <span className="text-xs font-normal text-muted-foreground">
+          (optional)
+        </span>
+      )}
+    </h4>
+  );
+}
+
+function ChoiceButton({
+  active,
+  onClick,
+  title,
+  desc,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left p-3 rounded-lg border transition-colors ${
+        active
+          ? "border-primary bg-accent"
+          : "border-border hover:bg-muted/50"
+      }`}
+    >
+      <div
+        className={`text-sm font-medium ${active ? "text-primary" : "text-foreground"}`}
+      >
+        {title}
+      </div>
+      <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
+    </button>
+  );
+}
+
 export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
   const { addItem } = useInventory();
   const [image, setImage] = useState<string | null>(null);
@@ -26,6 +91,7 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
 
   const hasPacks = (parseInt(packSize) || 1) > 1;
+  const unitName = unit.trim() || "pieces";
   const enteredStock = parseInt(stock) || 0;
   const actualStockUnits =
     stockMode === "pack" && hasPacks
@@ -102,8 +168,8 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
           </h3>
           <ImageUpload value={image} onChange={setImage} />
           <p className="text-xs text-muted-foreground mt-2">
-            Optional — items without a photo show a colored initial badge
-            instead.
+            Optional. Items without a photo show a colored badge with their
+            initials instead.
           </p>
         </div>
 
@@ -111,92 +177,126 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
           <h3 className="text-sm font-semibold text-foreground mb-3">
             Item details
           </h3>
-          <div className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Item name
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Heat Press Machine"
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </div>
+          <div className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-5">
+            <p className="text-xs text-muted-foreground">
+              Fields marked <span className="text-primary font-semibold">*</span>{" "}
+              are required. Everything else is optional.
+            </p>
 
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => {
-                  const newCategory = e.target.value as CategoryKey;
-                  setCategory(newCategory);
-                  setReturnable(newCategory === "equipment");
-                }}
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              >
-                {(Object.keys(CATEGORIES) as CategoryKey[]).map((key) => (
-                  <option key={key} value={key}>
-                    {CATEGORIES[key].label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Unit{" "}
-                <span className="text-muted-foreground font-normal">
-                  — the smallest piece you count, e.g. "pcs" or "sheet". NOT the
-                  pack/ream/box — that goes below.
-                </span>
-              </label>
-              <input
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                placeholder="pcs, ream, unit..."
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </div>
-
-            <div className="pt-2 border-t border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="block text-sm font-medium text-foreground">
-                    Needs to be returned
-                  </label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {returnable
-                      ? "This item is borrowed and returned (equipment). Pull-outs track condition and status until returned."
-                      : "This item is pulled out and consumed (materials). No return tracking, no due date."}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReturnable((v) => !v)}
-                  className={`flex-shrink-0 w-10 h-5 rounded-full relative transition-colors ${returnable ? "bg-primary" : "bg-muted border border-border"}`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
-                      returnable ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </button>
+            {/* 1. What is it */}
+            <section className="space-y-4">
+              <SectionTitle n={1} title="What is it?" />
+              <div>
+                <label className={labelCls}>
+                  Item name <Req />
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Bond Paper A4, Heat Press Machine"
+                  className={inputCls}
+                />
               </div>
-            </div>
+              <div>
+                <label className={labelCls}>
+                  Category <Req />
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => {
+                    const newCategory = e.target.value as CategoryKey;
+                    setCategory(newCategory);
+                    setReturnable(newCategory === "equipment");
+                  }}
+                  className={inputCls}
+                >
+                  {(Object.keys(CATEGORIES) as CategoryKey[]).map((key) => (
+                    <option key={key} value={key}>
+                      {CATEGORIES[key].label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Will this item be returned?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <ChoiceButton
+                    active={!returnable}
+                    onClick={() => setReturnable(false)}
+                    title="No, it gets used up"
+                    desc="Materials like paper, ink, flyers"
+                  />
+                  <ChoiceButton
+                    active={returnable}
+                    onClick={() => setReturnable(true)}
+                    title="Yes, it is borrowed"
+                    desc="Equipment like cameras and tools. Tracked until returned."
+                  />
+                </div>
+              </div>
+            </section>
 
-            <div className="pt-2 border-t border-border">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Pricing &amp; Pull-Out Bundling{" "}
-                <span className="normal-case font-normal">(optional)</span>
-              </h4>
+            {/* 2. How it is counted */}
+            <section className="space-y-4 pt-4 border-t border-border">
+              <SectionTitle n={2} title="How do you count it?" />
+              <div>
+                <label className={labelCls}>
+                  Counting unit <Req />
+                </label>
+                <p className={hintCls}>
+                  The single piece you count, not the pack. For bond paper, use
+                  "sheet", not "ream".
+                </p>
+                <input
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  placeholder="e.g. sheet, pcs, roll"
+                  className={inputCls}
+                />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {UNIT_SUGGESTIONS.map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      onClick={() => setUnit(u)}
+                      className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                        unit.trim() === u
+                          ? "bg-primary text-white border-primary"
+                          : "border-border text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Pull out in groups of</label>
+                <p className={hintCls}>
+                  Staff can only take this item in multiples of this number.
+                  Example: 10 means 10, 20, 30 {unitName}. Keep it at 1 to allow
+                  any amount.
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  value={qtyStep}
+                  onChange={(e) => setQtyStep(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </section>
+
+            {/* 3. Price */}
+            <section className="space-y-3 pt-4 border-t border-border">
+              <SectionTitle n={3} title="Price" optional />
+              <p className={hintCls}>
+                Used to compute costs in Reports. Example: one ream costs ₱300
+                and has 500 sheets.
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="flex items-start min-h-[2.5rem] text-sm font-medium text-foreground mb-1.5">
-                    Pack price (₱)
-                  </label>
+                  <label className={labelCls}>Price of one pack or box (₱)</label>
                   <input
                     type="number"
                     min={0}
@@ -204,175 +304,149 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
                     value={packPrice}
                     onChange={(e) => setPackPrice(e.target.value)}
                     placeholder="e.g. 300"
-                    className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className="flex items-start min-h-[2.5rem] text-sm font-medium text-foreground mb-1.5">
-                    Units per pack{" "}
-                    <span className="text-muted-foreground font-normal">
-                      (in {unit.trim() || "your Unit above"})
-                    </span>
+                  <label className={labelCls}>
+                    How many {unitName} in one pack?
                   </label>
                   <input
                     type="number"
                     min={1}
                     value={packSize}
                     onChange={(e) => setPackSize(e.target.value)}
-                    placeholder="e.g. 500 sheets/ream"
-                    className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    placeholder="e.g. 500"
+                    className={inputCls}
                   />
                 </div>
               </div>
               {parseFloat(packPrice) > 0 && parseInt(packSize) > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Cost per {unit.trim() || "unit"}:{" "}
+                <p className="text-xs text-muted-foreground">
+                  That is{" "}
                   <span className="font-medium text-foreground">
                     ₱{(parseFloat(packPrice) / parseInt(packSize)).toFixed(2)}
-                  </span>
+                  </span>{" "}
+                  per {unit.trim() || "piece"}.
                 </p>
               )}
-              <div className="mt-3">
-                <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Pull-out quantity step
-                </label>
+            </section>
+
+            {/* 4. Stock */}
+            <section className="space-y-4 pt-4 border-t border-border">
+              <SectionTitle n={4} title="Stock" />
+              <div>
+                <label className={labelCls}>How many do you have right now?</label>
+                {hasPacks && (
+                  <div className="flex gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setStockMode("pack")}
+                      className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                        stockMode === "pack"
+                          ? "bg-foreground text-background border-foreground"
+                          : "bg-card border-border text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      Count in packs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStockMode("unit")}
+                      className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                        stockMode === "unit"
+                          ? "bg-foreground text-background border-foreground"
+                          : "bg-card border-border text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      Count in {unitName}
+                    </button>
+                  </div>
+                )}
                 <input
                   type="number"
-                  min={1}
-                  value={qtyStep}
-                  onChange={(e) => setQtyStep(e.target.value)}
-                  className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  min={0}
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  className={inputCls}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Quantity jumps by this amount when pulling out this item (e.g.
-                  10 for bond paper). Leave at 1 for one-by-one items.
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-border">
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Initial stock{" "}
-                {hasPacks && (
-                  <span className="text-muted-foreground font-normal">
-                    (
-                    {stockMode === "pack"
-                      ? "in packs"
-                      : `in ${unit.trim() || "units"}`}
-                    )
-                  </span>
+                {hasPacks && stockMode === "pack" && enteredStock > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    = {actualStockUnits} {unitName} total ({enteredStock} packs ×{" "}
+                    {packSize} each)
+                  </p>
                 )}
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-              {hasPacks && (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setStockMode("pack")}
-                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
-                      stockMode === "pack"
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-card border-border text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    By pack (e.g. ream)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStockMode("unit")}
-                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
-                      stockMode === "unit"
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-card border-border text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    By {unit.trim() || "unit"}
-                  </button>
-                </div>
-              )}
-              {hasPacks && stockMode === "pack" && enteredStock > 0 && (
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  = {actualStockUnits} {unit.trim() || "units"} total (
-                  {enteredStock} × {packSize} per pack)
+              </div>
+              <div>
+                <label className={labelCls}>Warn me when stock drops to</label>
+                <p className={hintCls}>
+                  The item shows as <span className="font-medium">Low Stock</span>{" "}
+                  when it reaches this many {unitName} or less.
                 </p>
-              )}
-            </div>
+                <input
+                  type="number"
+                  min={0}
+                  value={minStock}
+                  onChange={(e) => setMinStock(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </section>
 
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Minimum stock (low-stock alert threshold)
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={minStock}
-                onChange={(e) => setMinStock(e.target.value)}
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Locker
-                </label>
-                <select
-                  value={locker}
-                  onChange={(e) => setLocker(e.target.value)}
-                  className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                >
-                  <option value="">Unassigned</option>
-                  <option value="Locker 1">Locker 1</option>
-                  <option value="Locker 2">Locker 2</option>
-                </select>
+            {/* 5. Storage and details */}
+            <section className="space-y-4 pt-4 border-t border-border">
+              <SectionTitle n={5} title="Storage and details" optional />
+              <div
+                className={`grid grid-cols-1 ${returnable ? "sm:grid-cols-2" : ""} gap-3`}
+              >
+                <div>
+                  <label className={labelCls}>Where is it stored?</label>
+                  <select
+                    value={locker}
+                    onChange={(e) => setLocker(e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">Not assigned</option>
+                    <option value="Locker 1">Locker 1</option>
+                    <option value="Locker 2">Locker 2</option>
+                  </select>
+                </div>
+                {returnable && (
+                  <div>
+                    <label className={labelCls}>Current condition</label>
+                    <select
+                      value={condition}
+                      onChange={(e) => setCondition(e.target.value)}
+                      className={inputCls}
+                    >
+                      <option value="Good">Good</option>
+                      <option value="Fair">Fair</option>
+                      <option value="Needs repair">Needs repair</option>
+                      <option value="Damaged">Damaged</option>
+                    </select>
+                  </div>
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Condition
-                </label>
-                <select
-                  value={condition}
-                  onChange={(e) => setCondition(e.target.value)}
-                  className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                >
-                  <option value="Good">Good</option>
-                  <option value="Fair">Fair</option>
-                  <option value="Needs repair">Needs repair</option>
-                  <option value="Damaged">Damaged</option>
-                </select>
+                <label className={labelCls}>Supplier</label>
+                <input
+                  value={supplier}
+                  onChange={(e) => setSupplier(e.target.value)}
+                  placeholder="Where you buy it from"
+                  className={inputCls}
+                />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Supplier
-              </label>
-              <input
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-                placeholder="Supplier name"
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Notes (optional)
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What is this used for?"
-                rows={2}
-                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none"
-              />
-            </div>
+              <div>
+                <label className={labelCls}>Notes</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What is this used for?"
+                  rows={2}
+                  className={`${inputCls} resize-none`}
+                />
+              </div>
+            </section>
 
             {saveError && (
               <p className="text-xs text-destructive">{saveError}</p>
@@ -409,6 +483,13 @@ export default function AddItem({ setPage }: { setPage: (p: string) => void }) {
                 )}
               </button>
             </div>
+            {!canSave && !submitting && (
+              <p className="text-xs text-muted-foreground text-center">
+                Fill in <span className="font-medium">Item name</span> and{" "}
+                <span className="font-medium">Counting unit</span> to add this
+                item.
+              </p>
+            )}
           </div>
         </div>
       </div>
