@@ -16,12 +16,6 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
 import Avatar from "../components/Avatar";
-import {
-  csvTemplate,
-  downloadCSV,
-  parseInventoryCSV,
-  datedFilename,
-} from "../lib/csv";
 import { getClearReminder } from "../lib/history";
 
 const sections = [
@@ -90,12 +84,6 @@ export default function SettingsPage() {
   const [deletingStaff, setDeletingStaff] = useState(false);
   const [deleteStaffError, setDeleteStaffError] = useState("");
 
-  const [bulkImportBusy, setBulkImportBusy] = useState(false);
-  const [bulkImportResult, setBulkImportResult] = useState<{
-    added: number;
-    errors: string[];
-  } | null>(null);
-  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   const [showClearModal, setShowClearModal] = useState(false);
   const [clearLogsChecked, setClearLogsChecked] = useState(true);
@@ -133,35 +121,6 @@ export default function SettingsPage() {
     }, 900);
   }
 
-  function handleDownloadTemplate() {
-    downloadCSV(datedFilename("inventory-template"), csvTemplate());
-  }
-
-  function handleBulkImportClick() {
-    setBulkImportResult(null);
-    bulkFileInputRef.current?.click();
-  }
-
-  async function handleBulkFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-
-    setBulkImportBusy(true);
-    setBulkImportResult(null);
-    const text = await file.text();
-    const { rows, errors } = parseInventoryCSV(text);
-
-    let added = 0;
-    for (const row of rows) {
-      const result = await addItem({ ...row, image: null });
-      if (result.ok) added++;
-      else errors.push(`"${row.name}": ${result.message || "failed to add."}`);
-    }
-
-    setBulkImportBusy(false);
-    setBulkImportResult({ added, errors });
-  }
 
   async function handleAddStaff() {
     if (!newName.trim()) {
@@ -457,77 +416,15 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
-              <div>
-                <h4 className="text-sm font-semibold text-foreground">
-                  Bulk Import Items
-                </h4>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Download the template, fill it in with your items (name,
-                  category, stock, unit, min/max stock, location, supplier,
-                  description), then upload it here to add them all at once. The
-                  Export button on the Inventory page produces a file in this
-                  same format.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleDownloadTemplate}
-                  className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-xs font-medium hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" /> Download Template
-                </button>
-                <input
-                  ref={bulkFileInputRef}
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={handleBulkFileChange}
-                />
-                <button
-                  onClick={handleBulkImportClick}
-                  disabled={bulkImportBusy}
-                  className="flex items-center gap-2 bg-primary text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  <Upload className="w-3.5 h-3.5" />{" "}
-                  {bulkImportBusy ? "Importing…" : "Upload Filled Template"}
-                </button>
-              </div>
-              {bulkImportResult && (
-                <div
-                  className={`rounded-lg border px-4 py-3 text-xs flex items-start gap-2 ${
-                    bulkImportResult.errors.length
-                      ? "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/40 dark:border-yellow-800 dark:text-yellow-300"
-                      : "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/40 dark:border-green-800 dark:text-green-300"
-                  }`}
-                >
-                  {bulkImportResult.errors.length ? (
-                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {bulkImportResult.added} item
-                      {bulkImportResult.added === 1 ? "" : "s"} imported
-                      successfully.
-                    </div>
-                    {bulkImportResult.errors.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                        {bulkImportResult.errors.map((e, i) => (
-                          <li key={i}>{e}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setBulkImportResult(null)}
-                    className="p-0.5 hover:opacity-70"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">
+                Importing items
+              </h4>
+              <p className="text-xs text-muted-foreground mt-1">
+                Bulk import has moved to{" "}
+                <span className="font-medium">Inventory &gt; Import</span>. The
+                template download is there too.
+              </p>
             </div>
           </div>
         )}

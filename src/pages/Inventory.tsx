@@ -17,7 +17,6 @@ import { InventoryItem, getStockStatus, CATEGORIES } from "../types";
 import {
   itemsToCSV,
   downloadCSV,
-  parseInventoryCSV,
   datedFilename,
 } from "../lib/csv";
 import StatusBadge from "../components/StatusBadge";
@@ -26,6 +25,7 @@ import CategoryChips, {
   CategoryFilterValue,
 } from "../components/CategoryChips";
 import EditItemModal from "../components/EditItemModal";
+import ImportItemsModal from "../components/ImportItemsModal";
 
 export default function Inventory({
   setPage,
@@ -42,12 +42,7 @@ export default function Inventory({
     useState<InventoryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    added: number;
-    errors: string[];
-  } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showImport, setShowImport] = useState(false);
 
   const filtered = items.filter((i) => {
     const matchSearch = i.name.toLowerCase().includes(search.toLowerCase());
@@ -67,32 +62,6 @@ export default function Inventory({
 
   function handleExport() {
     downloadCSV(datedFilename("inventory"), itemsToCSV(items));
-  }
-
-  function handleImportClick() {
-    setImportResult(null);
-    fileInputRef.current?.click();
-  }
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-selecting the same file later
-    if (!file) return;
-
-    setImportBusy(true);
-    setImportResult(null);
-    const text = await file.text();
-    const { rows, errors } = parseInventoryCSV(text);
-
-    let added = 0;
-    for (const row of rows) {
-      const result = await addItem({ ...row, image: null });
-      if (result.ok) added++;
-      else errors.push(`"${row.name}": ${result.message || "failed to add."}`);
-    }
-
-    setImportBusy(false);
-    setImportResult({ added, errors });
   }
 
   const [deleteError, setDeleteError] = useState("");
@@ -160,22 +129,12 @@ export default function Inventory({
               <option value="low">Low Stock</option>
               <option value="out">Out of Stock</option>
             </select>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={handleFileChange}
-            />
             <button
-              onClick={handleImportClick}
-              disabled={importBusy}
+              onClick={() => setShowImport(true)}
               className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-sm hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors disabled:opacity-50"
             >
               <Upload className="w-4 h-4" />{" "}
-              <span className="hidden sm:inline">
-                {importBusy ? "Importing…" : "Import"}
-              </span>
+              <span className="hidden sm:inline">Import</span>
             </button>
             <button
               onClick={handleExport}
@@ -192,41 +151,6 @@ export default function Inventory({
             </button>
           </div>
         </div>
-
-        {importResult && (
-          <div
-            className={`mb-4 rounded-lg border px-4 py-3 text-sm flex items-start gap-2 ${
-              importResult.errors.length
-                ? "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/40 dark:border-yellow-800 dark:text-yellow-300"
-                : "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/40 dark:border-green-800 dark:text-green-300"
-            }`}
-          >
-            {importResult.errors.length ? (
-              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            )}
-            <div className="flex-1">
-              <div className="font-medium">
-                {importResult.added} item{importResult.added === 1 ? "" : "s"}{" "}
-                imported successfully.
-              </div>
-              {importResult.errors.length > 0 && (
-                <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                  {importResult.errors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <button
-              onClick={() => setImportResult(null)}
-              className="p-0.5 hover:opacity-70"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         {/* Mobile card list */}
         <div className="md:hidden space-y-3">
@@ -550,6 +474,7 @@ export default function Inventory({
           </div>
         </div>
       )}
+      {showImport && <ImportItemsModal onClose={() => setShowImport(false)} />}
     </div>
   );
 }
