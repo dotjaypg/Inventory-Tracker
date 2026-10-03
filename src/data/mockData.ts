@@ -48,6 +48,6 @@ export const seedLogs: LogEntry[] = [
 ];
 
 export const seedRestocks: RestockEntry[] = [
-  { id: 1, itemId: 7, item: "Bond Paper A4", qty: 10, name: "Andrea Santos", date: "2024-06-01" },
-  { id: 2, itemId: 9, item: "Ink Cartridge (CMYK Set)", qty: 2, name: "Andrea Santos", date: "2024-05-20" },
+  { id: 1, itemId: 7, item: "Bond Paper A4", qty: 10, name: "Andrea Santos", date: "2024-06-01", cost: 6000 },
+  { id: 2, itemId: 9, item: "Ink Cartridge (CMYK Set)", qty: 2, name: "Andrea Santos", date: "2024-05-20", cost: 0 },
 ];

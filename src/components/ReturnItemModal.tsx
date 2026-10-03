@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useInventory } from "../context/InventoryContext";
+import { localToday } from "../lib/dates";
 import { LogEntry } from "../types";
 import ReceiptUpload from "./ReceiptUpload";
 
@@ -20,7 +21,7 @@ export default function ReturnItemModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [cost, setCost] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localToday());
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);

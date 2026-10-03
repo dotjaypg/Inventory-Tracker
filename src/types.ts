@@ -96,6 +96,7 @@ export interface RestockEntry {
   qty: number;
   name: string; // who restocked it
   date: string;
+  cost: number; // pesos paid for this restock (0 if not known)
 }
 
 // ─── Damage Records ──────────────────────────────────────────────────────────
@@ -116,3 +117,18 @@ export interface DamageRecord {
   receiptUrl: string; // data URL of the uploaded receipt (image or PDF) — required
   createdBy: string | null;
 }
+
+// ─── Notification settings (stored in app_settings, shared by everyone) ─────
+export interface NotificationSettings {
+  lowStock: boolean; // alert when items are low or out of stock
+  newPullOuts: boolean; // alert admins about pull-outs they haven't seen yet
+  overdue: boolean; // alert when borrowed items are not returned in time
+  overdueDays: number; // borrowed items become overdue after this many days
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  lowStock: true,
+  newPullOuts: true,
+  overdue: true,
+  overdueDays: 3,
+};

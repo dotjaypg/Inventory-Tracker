@@ -1,10 +1,8 @@
 import { useRef, useState } from "react";
 import {
-  Tag,
   UserCog,
   Database,
   Bell,
-  Palette,
   Plus,
   RotateCcw,
   Trash2,
@@ -13,26 +11,62 @@ import {
   Upload,
   AlertTriangle,
   CheckCircle2,
+  HardDrive,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
-import { CATEGORIES } from "../types";
 import Avatar from "../components/Avatar";
-import { csvTemplate, downloadCSV, parseInventoryCSV } from "../lib/csv";
+import { getClearReminder } from "../lib/history";
 
 const sections = [
   { id: "users", label: "Staff & PINs", icon: UserCog },
-  { id: "categories", label: "Categories", icon: Tag },
   { id: "database", label: "Database", icon: Database },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "theme", label: "Theme", icon: Palette },
 ];
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState("users");
   const { staffList, addStaff, resetPin, deleteStaff, currentStaff } =
     useAuth();
-  const { items, logs, usingMockData, addItem } = useInventory();
+  const {
+    items,
+    logs,
+    restocks,
+    damageRecords,
+    usingMockData,
+    addItem,
+    dbSizeMb,
+    lastClearedAt,
+    clearHistory,
+    notificationSettings,
+    updateNotificationSettings,
+  } = useInventory();
+  const [notifSaveState, setNotifSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [notifError, setNotifError] = useState("");
+  const [overdueDaysDraft, setOverdueDaysDraft] = useState<string | null>(null);
+
+  async function saveNotif(patch: Parameters<typeof updateNotificationSettings>[0]) {
+    setNotifSaveState("saving");
+    setNotifError("");
+    const result = await updateNotificationSettings(patch);
+    if (!result.ok) {
+      setNotifSaveState("error");
+      setNotifError(result.message || "Could not save.");
+      return;
+    }
+    setNotifSaveState("saved");
+    setTimeout(() => setNotifSaveState("idle"), 1500);
+  }
+
+  function commitOverdueDays() {
+    if (overdueDaysDraft === null) return;
+    const n = parseInt(overdueDaysDraft, 10);
+    setOverdueDaysDraft(null);
+    if (Number.isNaN(n) || n < 1 || n === notificationSettings.overdueDays) return;
+    saveNotif({ overdueDays: Math.min(n, 365) });
+  }
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
@@ -50,42 +84,43 @@ export default function SettingsPage() {
   const [deletingStaff, setDeletingStaff] = useState(false);
   const [deleteStaffError, setDeleteStaffError] = useState("");
 
-  const [bulkImportBusy, setBulkImportBusy] = useState(false);
-  const [bulkImportResult, setBulkImportResult] = useState<{
-    added: number;
-    errors: string[];
-  } | null>(null);
-  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
-  function handleDownloadTemplate() {
-    downloadCSV("inventory-template.csv", csvTemplate());
-  }
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearLogsChecked, setClearLogsChecked] = useState(true);
+  const [clearRestocksChecked, setClearRestocksChecked] = useState(true);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [clearError, setClearError] = useState("");
+  const [clearDone, setClearDone] = useState(false);
 
-  function handleBulkImportClick() {
-    setBulkImportResult(null);
-    bulkFileInputRef.current?.click();
-  }
+  const {
+    due: monthlyReminderDue,
+    daysSinceCleared,
+    oldestRecordDays,
+  } = getClearReminder(lastClearedAt, logs, restocks);
 
-  async function handleBulkFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  // Borrowed items that have not come back yet. Clearing the borrow logs
+  // would erase the only record of who has them, so it is blocked until
+  // every one of these is returned.
+  const unreturned = logs.filter((l) => l.status === "active");
+  const blockedByUnreturned = clearLogsChecked && unreturned.length > 0;
 
-    setBulkImportBusy(true);
-    setBulkImportResult(null);
-    const text = await file.text();
-    const { rows, errors } = parseInventoryCSV(text);
-
-    let added = 0;
-    for (const row of rows) {
-      const result = await addItem({ ...row, image: null });
-      if (result.ok) added++;
-      else errors.push(`"${row.name}": ${result.message || "failed to add."}`);
+  async function handleClearHistory() {
+    if (blockedByUnreturned) return;
+    setClearBusy(true);
+    setClearError("");
+    const result = await clearHistory(clearLogsChecked, clearRestocksChecked);
+    setClearBusy(false);
+    if (!result.ok) {
+      setClearError(result.message || "Could not clear history.");
+      return;
     }
-
-    setBulkImportBusy(false);
-    setBulkImportResult({ added, errors });
+    setClearDone(true);
+    setTimeout(() => {
+      setClearDone(false);
+      setShowClearModal(false);
+    }, 900);
   }
+
 
   async function handleAddStaff() {
     if (!newName.trim()) {
@@ -224,49 +259,6 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {activeSection === "categories" && (
-          <div className="max-w-xl space-y-5">
-            <h3 className="font-semibold text-foreground text-lg">
-              Categories
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              These four categories are fixed in the schema (kept simple on
-              purpose). To add a new one, your developer adds it to the
-              `category` check constraint in{" "}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                schema.sql
-              </code>{" "}
-              and the
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                CATEGORIES
-              </code>{" "}
-              map in{" "}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                types.ts
-              </code>
-              .
-            </p>
-            <div className="bg-card rounded-xl border border-border shadow-sm divide-y divide-border">
-              {(Object.keys(CATEGORIES) as Array<keyof typeof CATEGORIES>).map(
-                (key) => (
-                  <div key={key} className="flex items-center gap-3 px-4 py-3">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: CATEGORIES[key].text }}
-                    />
-                    <span className="text-sm font-medium text-foreground">
-                      {CATEGORIES[key].label}
-                    </span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {items.filter((i) => i.category === key).length} items
-                    </span>
-                  </div>
-                ),
-              )}
-            </div>
-          </div>
-        )}
-
         {activeSection === "database" && (
           <div className="max-w-xl space-y-5">
             <h3 className="font-semibold text-foreground text-lg">Database</h3>
@@ -311,79 +303,128 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
-              <div>
-                <h4 className="text-sm font-semibold text-foreground">
-                  Bulk Import Items
-                </h4>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Download the template, fill it in with your items (name,
-                  category, stock, unit, min/max stock, location, supplier,
-                  description), then upload it here to add them all at once. The
-                  Export button on the Inventory page produces a file in this
-                  same format.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleDownloadTemplate}
-                  className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 py-2 rounded-lg text-xs font-medium hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" /> Download Template
-                </button>
-                <input
-                  ref={bulkFileInputRef}
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={handleBulkFileChange}
-                />
-                <button
-                  onClick={handleBulkImportClick}
-                  disabled={bulkImportBusy}
-                  className="flex items-center gap-2 bg-primary text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  <Upload className="w-3.5 h-3.5" />{" "}
-                  {bulkImportBusy ? "Importing…" : "Upload Filled Template"}
-                </button>
-              </div>
-              {bulkImportResult && (
-                <div
-                  className={`rounded-lg border px-4 py-3 text-xs flex items-start gap-2 ${
-                    bulkImportResult.errors.length
-                      ? "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/40 dark:border-yellow-800 dark:text-yellow-300"
-                      : "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/40 dark:border-green-800 dark:text-green-300"
-                  }`}
-                >
-                  {bulkImportResult.errors.length ? (
-                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {bulkImportResult.added} item
-                      {bulkImportResult.added === 1 ? "" : "s"} imported
-                      successfully.
-                    </div>
-                    {bulkImportResult.errors.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                        {bulkImportResult.errors.map((e, i) => (
-                          <li key={i}>{e}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setBulkImportResult(null)}
-                    className="p-0.5 hover:opacity-70"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+              {!usingMockData && dbSizeMb !== null && (
+                <div>
+                  {(() => {
+                    // Supabase's free tier gives 500 MB of database storage.
+                    // This bar is just a visual heads-up, not a hard limit —
+                    // Supabase itself is the source of truth for actual usage.
+                    const FREE_TIER_LIMIT_MB = 500;
+                    const pct = Math.min(
+                      100,
+                      Math.round((dbSizeMb / FREE_TIER_LIMIT_MB) * 100),
+                    );
+                    const color =
+                      pct >= 90
+                        ? "bg-red-500"
+                        : pct >= 70
+                          ? "bg-yellow-500"
+                          : "bg-green-500";
+                    const label =
+                      pct >= 90
+                        ? "Nearly full"
+                        : pct >= 70
+                          ? "Getting full"
+                          : "Healthy";
+                    const labelColor =
+                      pct >= 90
+                        ? "text-red-600 dark:text-red-400"
+                        : pct >= 70
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-green-600 dark:text-green-400";
+                    return (
+                      <div className="flex items-center gap-3">
+                        <HardDrive className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="text-muted-foreground">
+                              Database size:{" "}
+                              <span className="font-medium text-foreground">
+                                {dbSizeMb} MB
+                              </span>{" "}
+                              / {FREE_TIER_LIMIT_MB} MB
+                            </span>
+                            <span className={`font-medium ${labelColor}`}>
+                              {label}
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${color} rounded-full transition-all`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
+            </div>
+
+            {monthlyReminderDue && (
+              <div className="flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
+                    {daysSinceCleared === null
+                      ? `History hasn't been cleared yet. Your oldest record is ${oldestRecordDays} days old.`
+                      : `It's been ${daysSinceCleared} days since history was last cleared.`}
+                  </p>
+                  <p className="text-xs text-yellow-700/80 dark:text-yellow-300/80 mt-0.5">
+                    Clearing old pull-out and restock logs keeps the database
+                    lean. Damage records and item data are never affected.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowClearModal(true)}
+                  className="flex-shrink-0 text-xs font-medium text-yellow-700 dark:text-yellow-300 underline hover:no-underline"
+                >
+                  Clear now
+                </button>
+              </div>
+            )}
+
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">
+                  Clear History
+                </h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Permanently deletes old records to keep the database lean.
+                  This does <span className="font-medium">not</span> touch your
+                  items, staff accounts, or damage records (kept for
+                  financial/audit purposes) — only pull-out logs and/or restock
+                  history, whichever you choose below.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>{logs.length} log entries</span>
+                <span>·</span>
+                <span>{restocks.length} restock entries</span>
+                <span>·</span>
+                <span>
+                  {damageRecords.length} damage records (never cleared here)
+                </span>
+              </div>
+              <button
+                onClick={() => setShowClearModal(true)}
+                className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800 px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-100 dark:hover:bg-red-950/60 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear History…
+              </button>
+            </div>
+
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">
+                Importing items
+              </h4>
+              <p className="text-xs text-muted-foreground mt-1">
+                Bulk import has moved to{" "}
+                <span className="font-medium">Inventory &gt; Import</span>. The
+                template download is there too.
+              </p>
             </div>
           </div>
         )}
@@ -393,50 +434,112 @@ export default function SettingsPage() {
             <h3 className="font-semibold text-foreground text-lg">
               Notification Settings
             </h3>
-            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Not wired up yet — this is a placeholder for when email/SMS
-                alerts get added later.
-              </p>
-              {["Low stock alerts", "New borrow requests", "Overdue items"].map(
-                (label) => (
-                  <div
-                    key={label}
-                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                  >
-                    <span className="text-sm text-foreground">{label}</span>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        defaultChecked
-                        disabled
-                      />
-                      <div className="w-10 h-5 bg-muted peer-checked:bg-primary rounded-full opacity-50" />
-                      <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-5 transition-all" />
-                    </label>
-                  </div>
-                ),
-              )}
-            </div>
-          </div>
-        )}
+            <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-1">
+              <div className="flex items-start justify-between gap-3 pb-3">
+                <p className="text-sm text-muted-foreground">
+                  Alerts show in the bell icon at the top right of the app.
+                  These settings apply to everyone.
+                </p>
+                <span className="text-xs flex-shrink-0 mt-0.5">
+                  {notifSaveState === "saving" && (
+                    <span className="text-muted-foreground">Saving…</span>
+                  )}
+                  {notifSaveState === "saved" && (
+                    <span className="text-green-600 dark:text-green-400">
+                      Saved
+                    </span>
+                  )}
+                </span>
+              </div>
 
-        {activeSection === "theme" && (
-          <div className="max-w-xl space-y-5">
-            <h3 className="font-semibold text-foreground text-lg">Theme</h3>
-            <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
-              <p className="text-sm text-muted-foreground">
-                Colors are set in{" "}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                  src/index.css
-                </code>{" "}
-                — they match your Figma design exactly (brand red{" "}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                  #C8102E
-                </code>
-                ).
-              </p>
+              {(
+                [
+                  {
+                    key: "lowStock",
+                    label: "Low stock alerts",
+                    desc: "When an item reaches its low-stock number or runs out. Shown to everyone.",
+                  },
+                  {
+                    key: "newPullOuts",
+                    label: "New pull-outs and borrows",
+                    desc: "Each new pull-out until the admin has seen it. Shown to admins only.",
+                  },
+                  {
+                    key: "overdue",
+                    label: "Overdue items",
+                    desc: "Borrowed items not returned in time. Shown to everyone.",
+                  },
+                ] as const
+              ).map(({ key, label, desc }) => {
+                const on = notificationSettings[key];
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-4 py-3 border-t border-border"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-foreground">
+                        {label}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {desc}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={on}
+                      aria-label={label}
+                      disabled={notifSaveState === "saving"}
+                      onClick={() => saveNotif({ [key]: !on })}
+                      className={`flex-shrink-0 w-10 h-5 rounded-full relative transition-colors disabled:opacity-60 ${
+                        on ? "bg-primary" : "bg-muted border border-border"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                          on ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {notificationSettings.overdue && (
+                <div className="flex items-center justify-between gap-4 py-3 border-t border-border">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">
+                      Mark as overdue after
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Days since the item was borrowed.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={
+                        overdueDaysDraft ??
+                        String(notificationSettings.overdueDays)
+                      }
+                      onChange={(e) => setOverdueDaysDraft(e.target.value)}
+                      onBlur={commitOverdueDays}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitOverdueDays();
+                      }}
+                      className="w-16 px-2 py-1.5 bg-input-background border border-border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    />
+                    <span className="text-sm text-muted-foreground">days</span>
+                  </div>
+                </div>
+              )}
+
+              {notifError && (
+                <p className="text-xs text-destructive pt-2">{notifError}</p>
+              )}
             </div>
           </div>
         )}
@@ -589,6 +692,122 @@ export default function SettingsPage() {
                 className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
               >
                 {deletingStaff ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClearModal && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => !clearBusy && setShowClearModal(false)}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Clear History
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              This permanently deletes the selected records. Items, staff
+              accounts, and damage records are never affected. This can't be
+              undone.
+            </p>
+            <div className="space-y-2 mb-4">
+              <label className="flex items-center gap-2.5 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={clearLogsChecked}
+                  onChange={(e) => setClearLogsChecked(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-foreground">
+                  Pull-out / borrow logs{" "}
+                  <span className="text-muted-foreground">({logs.length})</span>
+                </span>
+              </label>
+              <label className="flex items-center gap-2.5 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={clearRestocksChecked}
+                  onChange={(e) => setClearRestocksChecked(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-foreground">
+                  Restock history{" "}
+                  <span className="text-muted-foreground">
+                    ({restocks.length})
+                  </span>
+                </span>
+              </label>
+            </div>
+            {blockedByUnreturned && (
+              <div className="mb-4 p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-red-700 dark:text-red-300">
+                    <p className="font-semibold">
+                      Stop: {unreturned.length} borrowed item
+                      {unreturned.length === 1 ? " has" : "s have"} not been
+                      returned yet.
+                    </p>
+                    <p className="mt-1">
+                      Clearing now would erase the record of who has{" "}
+                      {unreturned.length === 1 ? "it" : "them"}. Make sure{" "}
+                      {unreturned.length === 1 ? "it is" : "they are"} returned
+                      first in{" "}
+                      <span className="font-medium">
+                        Requests &gt; History Log &gt; Active
+                      </span>
+                      , or untick "Pull-out / borrow logs" to clear only
+                      restock history.
+                    </p>
+                    <ul className="mt-2 space-y-0.5">
+                      {unreturned.slice(0, 5).map((l) => (
+                        <li key={l.id}>
+                          • {l.item} ({l.qty} {l.unit}), {l.employee}, since{" "}
+                          {l.borrowDate}
+                        </li>
+                      ))}
+                      {unreturned.length > 5 && (
+                        <li>• and {unreturned.length - 5} more</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+            {clearError && (
+              <p className="text-xs text-destructive mb-4">{clearError}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearModal(false)}
+                disabled={clearBusy}
+                className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearHistory}
+                disabled={
+                  clearBusy ||
+                  blockedByUnreturned ||
+                  (!clearLogsChecked && !clearRestocksChecked)
+                }
+                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {clearDone ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" /> Cleared!
+                  </>
+                ) : clearBusy ? (
+                  "Clearing…"
+                ) : (
+                  "Clear History"
+                )}
               </button>
             </div>
           </div>

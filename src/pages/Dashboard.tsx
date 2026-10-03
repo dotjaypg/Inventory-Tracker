@@ -1,460 +1,342 @@
 import {
-  Package,
-  X,
   AlertTriangle,
-  ClipboardList,
-  Plus,
+  CheckCircle2,
+  Clock,
   Download,
-  Wallet,
+  PackagePlus,
+  PackageX,
+  Plus,
+  ClipboardList,
+  ArrowRight,
 } from "lucide-react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { useInventory } from "../context/InventoryContext";
-import { getStockStatus, CATEGORIES } from "../types";
-import StatusBadge from "../components/StatusBadge";
-import Avatar from "../components/Avatar";
+import { useAuth } from "../context/AuthContext";
+import { getStockStatus } from "../types";
+import { getClearReminder } from "../lib/history";
+import { daysSince } from "../lib/notifications";
+import { buildMonthlyUsage, usageToCSV } from "../lib/report";
+import { downloadCSV, datedFilename } from "../lib/csv";
 import ItemIcon from "../components/ItemIcon";
 
-const MONTH_LABELS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+const peso = (n: number) =>
+  `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function monthKey(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${d.getFullYear()}-${d.getMonth()}`;
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
-function buildMonthlyBorrowData(
-  logs: { borrowDate: string; returnedAt: string | null }[],
-) {
-  const now = new Date();
-  const months = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push({
-      key: `${d.getFullYear()}-${d.getMonth()}`,
-      month: MONTH_LABELS[d.getMonth()],
-      borrowed: 0,
-      returned: 0,
-    });
-  }
-  const byKey = Object.fromEntries(months.map((m) => [m.key, m]));
-  for (const log of logs) {
-    if (log.borrowDate && byKey[monthKey(log.borrowDate)])
-      byKey[monthKey(log.borrowDate)].borrowed++;
-    if (log.returnedAt && byKey[monthKey(log.returnedAt)])
-      byKey[monthKey(log.returnedAt)].returned++;
-  }
-  return months;
-}
-
-export default function Dashboard({
-  setPage,
-}: {
-  setPage: (p: string) => void;
-}) {
-  const { items, logs, restocks, damageRecords } = useInventory();
-
-  const low = items.filter((i) => getStockStatus(i) === "low").length;
-  const out = items.filter((i) => getStockStatus(i) === "out").length;
-  const active = logs.filter((l) => l.status === "active").length;
+export default function Dashboard({ setPage }: { setPage: (p: string) => void }) {
+  const { items, logs, restocks, damageRecords, lastClearedAt, notificationSettings } =
+    useInventory();
+  const { currentStaff } = useAuth();
 
   const now = new Date();
-  const isThisMonth = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return (
-      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-    );
-  };
-  // Usage Cost = materials actually consumed this month (equipment log.cost is
-  // always 0 — a normal borrow/return isn't a financial loss) + any repair/
-  // damage costs actually incurred this month.
-  const thisMonthCost =
-    logs
-      .filter((l) => isThisMonth(l.borrowDate))
-      .reduce((sum, l) => sum + l.cost, 0) +
-    damageRecords
-      .filter((d) => isThisMonth(d.date))
-      .reduce((sum, d) => sum + d.cost, 0);
+  const thisMonth = buildMonthlyUsage(logs, damageRecords, restocks, items, now.getFullYear(), now.getMonth());
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = buildMonthlyUsage(logs, damageRecords, restocks, items, lastMonthDate.getFullYear(), lastMonthDate.getMonth());
 
-  const kpis = [
-    {
-      label: "Total Items",
-      value: items.length,
-      icon: Package,
-      color: "text-blue-600",
-      bg: "bg-blue-50 dark:bg-blue-950/40",
-      trend: `${items.length} tracked`,
-    },
-    {
-      label: "Out of Stock",
-      value: out,
-      icon: X,
-      color: "text-red-600",
-      bg: "bg-red-50 dark:bg-red-950/40",
-      trend: out > 0 ? "Needs reorder" : "None — good",
-    },
-    {
-      label: "Low Stock",
-      value: low,
-      icon: AlertTriangle,
-      color: "text-yellow-600",
-      bg: "bg-yellow-50 dark:bg-yellow-950/40",
-      trend: "Needs restocking",
-    },
-    {
-      label: "Active Borrows",
-      value: active,
-      icon: ClipboardList,
-      color: "text-red-600",
-      bg: "bg-red-50 dark:bg-red-950/40",
-      trend: "Currently out",
-    },
-    {
-      label: "Usage Cost (This Month)",
-      value: `₱${thisMonthCost.toFixed(2)}`,
-      icon: Wallet,
-      color: "text-green-600",
-      bg: "bg-green-50 dark:bg-green-950/40",
-      trend: "Value pulled out",
-    },
-  ];
+  const outItems = items.filter((i) => getStockStatus(i) === "out");
+  const lowItems = items.filter((i) => getStockStatus(i) === "low");
+  const borrowed = logs
+    .filter((l) => l.status === "active" && l.needsReturn)
+    .map((l) => ({ ...l, days: daysSince(l.borrowDate) }))
+    .sort((a, b) => b.days - a.days);
+  const overdue = borrowed.filter((l) => l.days > notificationSettings.overdueDays);
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const pullOutsThisMonth = logs.filter((l) => l.borrowDate.startsWith(monthPrefix)).length;
 
-  const categoryStatus = (
-    Object.keys(CATEGORIES) as Array<keyof typeof CATEGORIES>
-  ).map((key) => {
-    const inCat = items.filter((i) => i.category === key);
-    const avail = inCat.filter((i) => getStockStatus(i) !== "out").length;
-    return {
-      label: CATEGORIES[key].label,
-      available: avail,
-      total: inCat.length,
-    };
-  });
+  const { due: reminderDue, daysSinceCleared, oldestRecordDays } = getClearReminder(
+    lastClearedAt,
+    logs,
+    restocks,
+  );
 
-  const lowStockItems = items.filter((i) => getStockStatus(i) !== "available");
-  const recentLogs = [...logs]
-    .sort((a, b) => (a.borrowDate < b.borrowDate ? 1 : -1))
-    .slice(0, 4);
-  const monthlyBorrowData = buildMonthlyBorrowData(logs);
+  const attentionCount = overdue.length + outItems.length + lowItems.length;
+  const costDiff = thisMonth.totalCost - lastMonth.totalCost;
 
-  type ActivityEvent = {
-    date: string;
-    text: string;
-    type: "request" | "return" | "alert" | "restock";
-  };
-  const activityEvents: ActivityEvent[] = [];
-  for (const log of logs) {
-    activityEvents.push({
-      date: log.borrowDate,
-      text: `${log.employee} pulled out ${log.qty} ${log.unit} of ${log.item}`,
-      type: "request",
-    });
-    if (log.status === "returned" && log.returnedAt) {
-      activityEvents.push({
-        date: log.returnedAt.slice(0, 10),
-        text: `${log.item} returned by ${log.employee} — stock restored`,
-        type: "return",
-      });
-    }
-  }
-  for (const r of restocks) {
-    activityEvents.push({
-      date: r.date,
-      text: `${r.name} restocked ${r.qty} of ${r.item}`,
-      type: "restock",
-    });
-  }
-  for (const item of items) {
-    if (getStockStatus(item) === "out") {
-      activityEvents.push({
-        date: item.lastUpdated,
-        text: `Stock alert: ${item.name} is now Out of Stock`,
-        type: "alert",
-      });
-    }
-  }
-  const activities = activityEvents
+  // Recent activity: pull-outs, returns and restocks, newest first.
+  const activity = [
+    ...logs.map((l) => ({
+      date: l.borrowDate,
+      text: `${l.employee} took ${l.qty} ${l.unit} of ${l.item}`,
+      kind: "out" as const,
+    })),
+    ...logs
+      .filter((l) => l.needsReturn && l.returnedAt)
+      .map((l) => ({ date: l.returnedAt!.slice(0, 10), text: `${l.item} was returned by ${l.employee}`, kind: "in" as const })),
+    ...restocks.map((r) => ({ date: r.date, text: `${r.name} added ${r.qty} ${r.item}`, kind: "restock" as const })),
+  ]
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .slice(0, 6);
 
   return (
-    <div className="space-y-6">
-      <div className="sticky top-0 z-10 flex items-center justify-end gap-2 sm:gap-3 flex-wrap bg-background/95 backdrop-blur-sm border-b border-border px-4 md:px-6 py-3">
-        <button
-          onClick={() => setPage("Add Item")}
-          className="flex items-center gap-2 bg-primary text-white px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
-        >
-          <Plus className="w-4 h-4" />{" "}
-          <span className="hidden sm:inline">Add Item</span>
-        </button>
-        <button
-          onClick={() => setPage("Requests")}
-          className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors shadow-sm"
-        >
-          <ClipboardList className="w-4 h-4" />{" "}
-          <span className="hidden sm:inline">New Request</span>
-        </button>
-        <button className="flex items-center gap-2 bg-neutral-700 dark:bg-neutral-700 text-white border border-transparent px-3 md:px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-neutral-600 dark:hover:bg-neutral-600 transition-colors shadow-sm">
-          <Download className="w-4 h-4" />{" "}
-          <span className="hidden sm:inline">Export Report</span>
-        </button>
+    <div className="p-4 md:p-6 space-y-5 max-w-6xl">
+      {/* Greeting + quick actions */}
+      <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">
+            {greeting()}, {currentStaff?.name}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {attentionCount === 0
+              ? "Everything looks good today. Nothing needs your attention."
+              : `${attentionCount} thing${attentionCount === 1 ? " needs" : "s need"} your attention below.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 lg:ml-auto">
+          <QuickAction icon={Plus} label="Add item" primary onClick={() => setPage("Add Item")} />
+          <QuickAction icon={ClipboardList} label="Pull out" onClick={() => setPage("Requests")} />
+          <QuickAction icon={PackagePlus} label="Restock" onClick={() => setPage("Restock")} />
+          <QuickAction
+            icon={Download}
+            label="Export report"
+            title="Download this month's usage report (opens in Excel)"
+            onClick={() =>
+              downloadCSV(
+                datedFilename(`report-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`),
+                usageToCSV(thisMonth),
+              )
+            }
+          />
+        </div>
       </div>
 
-      <div className="px-4 md:px-6 space-y-6 pb-6">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {kpis.map((k) => (
-            <div
-              key={k.label}
-              className="bg-card rounded-xl border border-border p-5 shadow-sm"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className={`${k.bg} p-2.5 rounded-lg`}>
-                  <k.icon className={`w-5 h-5 ${k.color}`} />
-                </div>
-                <span className="text-xs text-muted-foreground">{k.trend}</span>
-              </div>
-              <div className="text-3xl font-bold text-foreground mb-0.5">
-                {k.value}
-              </div>
-              <div className="text-sm text-muted-foreground">{k.label}</div>
-            </div>
-          ))}
+      {/* Key numbers, each explained in words */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Stat
+          label="Used this month"
+          value={peso(thisMonth.totalCost)}
+          note={
+            lastMonth.totalCost === 0 && thisMonth.totalCost === 0
+              ? "No costs yet"
+              : `${costDiff >= 0 ? "+" : "-"}${peso(Math.abs(costDiff))} vs last month`
+          }
+          onClick={() => setPage("Reports")}
+        />
+        <Stat label="Pull-outs this month" value={String(pullOutsThisMonth)} note="Materials and equipment" onClick={() => setPage("Requests")} />
+        <Stat
+          label="Borrowed right now"
+          value={String(borrowed.length)}
+          note={overdue.length ? `${overdue.length} overdue` : "None overdue"}
+          warn={overdue.length > 0}
+          onClick={() => setPage("Requests")}
+        />
+        <Stat
+          label="Need restocking"
+          value={String(outItems.length + lowItems.length)}
+          note={`${outItems.length} out, ${lowItems.length} low`}
+          warn={outItems.length > 0}
+          onClick={() => setPage("Restock")}
+        />
+      </div>
+
+      {reminderDue && (
+        <div className="flex items-center gap-3 p-3 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-800 text-sm text-yellow-700 dark:text-yellow-300">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">
+            {daysSinceCleared === null
+              ? `Your oldest record is ${oldestRecordDays} days old. Consider clearing old history.`
+              : `It's been ${daysSinceCleared} days since history was cleared.`}
+          </span>
+          <button onClick={() => setPage("Settings")} className="text-xs font-medium underline hover:no-underline">
+            Review
+          </button>
         </div>
+      )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="col-span-2 bg-card rounded-xl border border-border p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-semibold text-foreground">
-                Monthly Borrowing Activity
-              </h3>
-              <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-                Last 6 months
-              </span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Needs attention */}
+        <Panel title="Needs attention" action={attentionCount ? { label: "Restock", onClick: () => setPage("Restock") } : undefined}>
+          {attentionCount === 0 ? (
+            <div className="flex items-center gap-3 py-6 justify-center text-sm text-green-700 dark:text-green-400">
+              <CheckCircle2 className="w-5 h-5" /> All items are stocked and nothing is overdue.
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={monthlyBorrowData}>
-                <defs>
-                  <linearGradient id="borrowGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#C8102E" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#C8102E" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="rgba(0,0,0,0.06)"
+          ) : (
+            <ul className="divide-y divide-border">
+              {overdue.slice(0, 5).map((l) => (
+                <Row
+                  key={l.id}
+                  icon={<Clock className="w-4 h-4 text-red-600 dark:text-red-400" />}
+                  title={`${l.item} is overdue`}
+                  sub={`${l.employee} has had it for ${l.days} days`}
+                  onClick={() => setPage("Requests")}
                 />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 12, fill: "#6B7280" }}
-                  axisLine={false}
-                  tickLine={false}
+              ))}
+              {outItems.slice(0, 5).map((i) => (
+                <Row
+                  key={`out-${i.id}`}
+                  icon={<PackageX className="w-4 h-4 text-red-600 dark:text-red-400" />}
+                  title={`${i.name} is out of stock`}
+                  sub="Staff can't pull this out until it's restocked"
+                  onClick={() => setPage("Restock")}
                 />
-                <YAxis
-                  tick={{ fontSize: 12, fill: "#6B7280" }}
-                  axisLine={false}
-                  tickLine={false}
+              ))}
+              {lowItems.slice(0, 5).map((i) => (
+                <Row
+                  key={`low-${i.id}`}
+                  icon={<AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />}
+                  title={`${i.name} is running low`}
+                  sub={`${i.stock} ${i.unit} left, alert set at ${i.minStock}`}
+                  onClick={() => setPage("Restock")}
                 />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: 8,
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    fontSize: 12,
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="borrowed"
-                  stroke="#C8102E"
-                  strokeWidth={2}
-                  fill="url(#borrowGrad)"
-                  name="Borrowed"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="returned"
-                  stroke="#22C55E"
-                  strokeWidth={2}
-                  fill="none"
-                  strokeDasharray="4 2"
-                  name="Returned"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+              ))}
+            </ul>
+          )}
+        </Panel>
 
-          <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
-            <h3 className="font-semibold text-foreground mb-4">
-              Inventory Status
-            </h3>
-            <div className="space-y-4">
-              {categoryStatus.map((s) => {
-                const pct = s.total
-                  ? Math.round((s.available / s.total) * 100)
-                  : 0;
-                const color =
-                  pct === 0
-                    ? "bg-red-500"
-                    : pct < 40
-                      ? "bg-yellow-500"
-                      : "bg-green-500";
+        {/* Borrowed right now */}
+        <Panel title="Borrowed right now" action={borrowed.length ? { label: "History Log", onClick: () => setPage("Requests") } : undefined}>
+          {borrowed.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No equipment is out right now.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {borrowed.slice(0, 6).map((l) => {
+                const item = items.find((i) => i.id === l.itemId);
+                const late = l.days > notificationSettings.overdueDays;
                 return (
-                  <div key={s.label}>
-                    <div className="flex justify-between text-sm mb-1.5">
-                      <span className="text-foreground font-medium">
-                        {s.label}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {s.available}/{s.total}
-                      </span>
+                  <li key={l.id} className="flex items-center gap-3 py-2.5">
+                    <ItemIcon name={l.item} category={l.category} image={item?.image ?? null} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">{l.item}</div>
+                      <div className="text-xs text-muted-foreground truncate">{l.employee}</div>
                     </div>
-                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className={`h-full ${color} rounded-full transition-all`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
+                    <span className={`text-xs flex-shrink-0 ${late ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}`}>
+                      {l.days === 0 ? "Today" : `${l.days} day${l.days === 1 ? "" : "s"}`}
+                    </span>
+                  </li>
                 );
               })}
-            </div>
-          </div>
-        </div>
+            </ul>
+          )}
+        </Panel>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="col-span-2 bg-card rounded-xl border border-border shadow-sm">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">Recent Requests</h3>
-              <button
-                onClick={() => setPage("Requests")}
-                className="text-xs text-primary font-medium hover:underline"
-              >
-                View all
-              </button>
-            </div>
-            <div className="divide-y divide-border">
-              {recentLogs.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors"
-                >
-                  <Avatar name={r.employee} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {r.employee}
-                      </span>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground">
-                        {r.id}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {r.item} × {r.qty}
-                    </div>
-                  </div>
-                  <StatusBadge status={r.status} />
-                </div>
+        {/* This month's top materials */}
+        <Panel title="Top materials this month" action={{ label: "Full report", onClick: () => setPage("Reports") }}>
+          {thisMonth.materials.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No materials used yet this month.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {thisMonth.materials.slice(0, 5).map((m) => (
+                <li key={`${m.item}|${m.unit}`} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <span className="text-foreground truncate">{m.item}</span>
+                  <span className="text-muted-foreground flex-shrink-0">
+                    {m.qty.toLocaleString()} {m.unit}
+                    {m.cost > 0 && <span className="text-foreground font-medium"> · {peso(m.cost)}</span>}
+                  </span>
+                </li>
               ))}
-            </div>
-          </div>
+            </ul>
+          )}
+        </Panel>
 
-          <div className="bg-card rounded-xl border border-border shadow-sm">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">
-                Low Stock Alerts
-              </h3>
-            </div>
-            <div className="divide-y divide-border">
-              {lowStockItems.length === 0 && (
-                <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  All items well stocked
-                </div>
-              )}
-              {lowStockItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 px-4 py-3"
-                >
-                  <ItemIcon
-                    name={item.name}
-                    category={item.category}
-                    image={item.image}
+        {/* Recent activity */}
+        <Panel title="Recent activity">
+          {activity.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No activity yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {activity.map((a, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <span
+                    className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                      a.kind === "out" ? "bg-primary" : a.kind === "in" ? "bg-green-500" : "bg-blue-500"
+                    }`}
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate">
-                      {item.name}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.stock} remaining
-                    </div>
-                  </div>
-                  <StatusBadge status={getStockStatus(item)} />
-                </div>
+                  <span className="flex-1 text-foreground">{a.text}</span>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">{a.date}</span>
+                </li>
               ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card rounded-xl border border-border shadow-sm">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <h3 className="font-semibold text-foreground">Recent Activity</h3>
-          </div>
-          <div className="p-5 space-y-4">
-            {activities.map((a, i) => {
-              const dotColor =
-                a.type === "alert"
-                  ? "bg-red-500"
-                  : a.type === "return"
-                    ? "bg-green-500"
-                    : a.type === "restock"
-                      ? "bg-blue-500"
-                      : "bg-gray-400";
-              return (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="mt-1.5 flex flex-col items-center gap-1">
-                    <div className={`w-2 h-2 rounded-full ${dotColor}`} />
-                    {i < activities.length - 1 && (
-                      <div className="w-px h-6 bg-border" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {a.text}
-                    </p>
-                    <span className="text-xs text-muted-foreground">
-                      {a.date}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-            {activities.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No activity yet.
-              </p>
-            )}
-          </div>
-        </div>
+            </ul>
+          )}
+        </Panel>
       </div>
     </div>
+  );
+}
+
+function QuickAction({
+  icon: Icon,
+  label,
+  onClick,
+  primary,
+  title,
+}: {
+  icon: typeof Plus;
+  label: string;
+  onClick: () => void;
+  primary?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        primary ? "bg-primary text-white hover:opacity-90" : "bg-card border border-border text-foreground hover:bg-muted/50"
+      }`}
+    >
+      <Icon className="w-4 h-4" /> {label}
+    </button>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  note,
+  warn,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  warn?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} className="text-left bg-card rounded-xl border border-border p-4 shadow-sm hover:border-primary transition-colors">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="text-2xl font-bold text-foreground mt-1">{value}</div>
+      <div className={`text-xs mt-1 ${warn ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}`}>{note}</div>
+    </button>
+  );
+}
+
+function Panel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: { label: string; onClick: () => void };
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-foreground">{title}</h3>
+        {action && (
+          <button onClick={action.onClick} className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+            {action.label} <ArrowRight className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Row({ icon, title, sub, onClick }: { icon: React.ReactNode; title: string; sub: string; onClick: () => void }) {
+  return (
+    <li>
+      <button onClick={onClick} className="w-full flex items-center gap-3 py-2.5 text-left hover:bg-muted/30 rounded-md px-1 -mx-1">
+        {icon}
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-medium text-foreground truncate">{title}</span>
+          <span className="block text-xs text-muted-foreground truncate">{sub}</span>
+        </span>
+      </button>
+    </li>
   );
 }

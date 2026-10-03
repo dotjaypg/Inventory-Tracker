@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Search, X, RotateCcw } from "lucide-react";
+import { Search, X, RotateCcw, Download } from "lucide-react";
+import { downloadCSV, datedFilename } from "../lib/csv";
 import { useInventory } from "../context/InventoryContext";
 import { getStockStatus, CATEGORIES, unitCost, LogEntry } from "../types";
 import StatusBadge from "../components/StatusBadge";
@@ -13,6 +14,7 @@ export default function Requests() {
   const { items, logs, borrowItem, turnBackItem, refresh } = useInventory();
   const [activeTab, setActiveTab] = useState<"browse" | "log">("browse");
   const [reqTab, setReqTab] = useState("All");
+  const [logSearch, setLogSearch] = useState("");
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [selectedBorrowId, setSelectedBorrowId] = useState<number | null>(null);
@@ -35,10 +37,45 @@ export default function Requests() {
   const [returnLog, setReturnLog] = useState<LogEntry | null>(null);
 
   const statusTabs = ["All", "Active", "Returned"];
-  const filteredReqs =
+  const q = logSearch.trim().toLowerCase();
+  const filteredReqs = (
     reqTab === "All"
       ? logs
-      : logs.filter((r) => r.status === reqTab.toLowerCase());
+      : logs.filter((r) => r.status === reqTab.toLowerCase())
+  ).filter(
+    (r) =>
+      !q ||
+      [r.item, r.employee, r.confirmedBy || "", r.id, r.purpose]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+  );
+  const filteredCost = filteredReqs.reduce((sum, r) => sum + r.cost, 0);
+
+  // Exports exactly what is shown (current filter + search).
+  function exportLog() {
+    const esc = (v: string | number) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const header = ["ID", "Confirmed By", "Name / Dept.", "Item", "Category", "Qty", "Unit", "Cost", "Purpose / Condition", "Date", "Status", "Returned At", "Approved By"];
+    const rows = filteredReqs.map((l) => [
+      l.id,
+      l.confirmedBy || "",
+      l.employee,
+      l.item,
+      CATEGORIES[l.category]?.label || l.category,
+      l.qty,
+      l.unit,
+      l.cost.toFixed(2),
+      l.needsReturn ? `Out: ${l.conditionOut || ""}${l.conditionIn ? ` / In: ${l.conditionIn}` : ""}` : l.purpose,
+      l.borrowDate,
+      l.needsReturn ? l.status : "used up",
+      l.returnedAt || "",
+      l.approvedBy || "",
+    ]);
+    downloadCSV(
+      datedFilename("history-log"),
+      [header, ...rows].map((r) => r.map(esc).join(",")).join("\n"),
+    );
+  }
   const browseItems = items.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase()),
   );
@@ -117,8 +154,15 @@ export default function Requests() {
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Borrow Log
-          <span className="ml-2 bg-primary text-white text-xs px-1.5 py-0.5 rounded-full">
+          History Log
+          {/* Counts only returnable items (equipment) still out. Material
+              pull-outs are consumed, so they are logged as finished and do
+              not add to this number. */}
+          <span
+            title="Items borrowed and not yet returned"
+            aria-label="Items borrowed and not yet returned"
+            className="ml-2 bg-primary text-white text-xs px-1.5 py-0.5 rounded-full cursor-help"
+          >
             {logs.filter((r) => r.status === "active").length}
           </span>
         </button>
@@ -185,7 +229,17 @@ export default function Requests() {
         </div>
       ) : (
         <div>
-          <div className="flex gap-2 mb-5">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+            <div className="relative max-w-xs flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={logSearch}
+                onChange={(e) => setLogSearch(e.target.value)}
+                placeholder="Search item, name, or ID..."
+                className="w-full pl-9 pr-3 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </div>
+            <div className="flex gap-2 items-center">
             {statusTabs.map((t) => (
               <button
                 key={t}
@@ -199,6 +253,14 @@ export default function Requests() {
                 {t}
               </button>
             ))}
+            </div>
+            <button
+              onClick={exportLog}
+              title="Download what is shown below (opens in Excel)"
+              className="sm:ml-auto flex items-center justify-center gap-2 bg-neutral-700 text-white px-3 py-2 rounded-lg text-sm hover:bg-neutral-600 transition-colors"
+            >
+              <Download className="w-4 h-4" /> Export
+            </button>
           </div>
           {/* Mobile card list */}
           <div className="md:hidden space-y-2">
@@ -348,6 +410,19 @@ export default function Requests() {
               <div className="py-12 text-center text-sm text-muted-foreground">
                 No records found.
               </div>
+            )}
+          </div>
+          <div className="mt-3 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+            <span>
+              Showing {filteredReqs.length} of {logs.length} records
+            </span>
+            {filteredCost > 0 && (
+              <span>
+                Total cost shown:{" "}
+                <span className="font-medium text-foreground">
+                  ₱{filteredCost.toFixed(2)}
+                </span>
+              </span>
             )}
           </div>
         </div>

@@ -15,6 +15,8 @@ import {
   DamageRecord,
   CategoryKey,
   unitCost,
+  NotificationSettings,
+  DEFAULT_NOTIFICATION_SETTINGS,
 } from "../types";
 import {
   seedItems,
@@ -23,6 +25,7 @@ import {
   seedRestocks,
 } from "../data/mockData";
 import { useAuth } from "./AuthContext";
+import { localToday } from "../lib/dates";
 
 // Turns raw Postgres/Supabase error objects into plain-language messages.
 // Falls back to a generic message for anything we don't specifically recognize,
@@ -41,6 +44,9 @@ function friendlyError(
       return "One of the values entered isn't valid for this field.";
     case "42501": // insufficient_privilege (RLS/permissions)
       return "You don't have permission to do that. Make sure your database is set up correctly.";
+    case "P0001": // message raised on purpose by our own database functions
+    case "P0002":
+      return error.message || fallback;
     default:
       return fallback;
   }
@@ -80,6 +86,7 @@ interface RestockInput {
   itemId: number;
   qty: number;
   name: string;
+  cost?: number; // pesos paid; defaults to 0
 }
 
 export interface DamageRecordInput {
@@ -100,6 +107,12 @@ interface InventoryContextValue {
   damageRecords: DamageRecord[];
   loading: boolean;
   usingMockData: boolean;
+  dbSizeMb: number | null;
+  lastClearedAt: string | null;
+  notificationSettings: NotificationSettings;
+  updateNotificationSettings: (
+    patch: Partial<NotificationSettings>,
+  ) => Promise<{ ok: boolean; message?: string }>;
   refresh: () => Promise<void>;
   addItem: (input: NewItemInput) => Promise<{ ok: boolean; message?: string }>;
   updateItem: (
@@ -120,9 +133,43 @@ interface InventoryContextValue {
   addDamageRecord: (
     input: DamageRecordInput,
   ) => Promise<{ ok: boolean; message?: string }>;
+  clearHistory: (
+    clearLogs: boolean,
+    clearRestocks: boolean,
+  ) => Promise<{ ok: boolean; message?: string }>;
 }
 
 const InventoryContext = createContext<InventoryContextValue | null>(null);
+
+// app_settings keys used for notification settings.
+const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
+  lowStock: "notif_low_stock",
+  newPullOuts: "notif_new_pullouts",
+  overdue: "notif_overdue",
+  overdueDays: "notif_overdue_days",
+};
+
+function parseNotificationSettings(
+  map: Map<string, string | null>,
+): NotificationSettings {
+  const bool = (key: string, fallback: boolean) => {
+    const v = map.get(key);
+    return v === undefined || v === null ? fallback : v === "true";
+  };
+  const days = parseInt(map.get(NOTIF_KEYS.overdueDays) ?? "", 10);
+  return {
+    lowStock: bool(NOTIF_KEYS.lowStock, DEFAULT_NOTIFICATION_SETTINGS.lowStock),
+    newPullOuts: bool(
+      NOTIF_KEYS.newPullOuts,
+      DEFAULT_NOTIFICATION_SETTINGS.newPullOuts,
+    ),
+    overdue: bool(NOTIF_KEYS.overdue, DEFAULT_NOTIFICATION_SETTINGS.overdue),
+    overdueDays:
+      Number.isNaN(days) || days < 1
+        ? DEFAULT_NOTIFICATION_SETTINGS.overdueDays
+        : days,
+  };
+}
 
 function rowToItem(row: any): InventoryItem {
   return {
@@ -178,6 +225,7 @@ function rowToRestock(row: any): RestockEntry {
     qty: row.qty,
     name: row.name,
     date: row.date,
+    cost: Number(row.cost) || 0,
   };
 }
 
@@ -203,6 +251,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [restocks, setRestocks] = useState<RestockEntry[]>([]);
   const [damageRecords, setDamageRecords] = useState<DamageRecord[]>([]);
+  const [dbSizeMb, setDbSizeMb] = useState<number | null>(null);
+  const [lastClearedAt, setLastClearedAt] = useState<string | null>(null);
+  const [notificationSettings, setNotificationSettings] =
+    useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [loading, setLoading] = useState(true);
   const usingMockData = !isSupabaseConfigured;
 
@@ -219,32 +271,90 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setLogs(seedLogs);
       setRestocks(seedRestocks);
       setDamageRecords([]);
+      setDbSizeMb(null);
+      setLastClearedAt(null);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const [itemsRes, logsRes, restocksRes, damageRes] = await Promise.all([
-      supabase.from("items").select("*").order("name"),
-      supabase
-        .from("logs")
-        .select("*")
-        .order("borrow_date", { ascending: false }),
-      supabase.from("restocks").select("*").order("date", { ascending: false }),
-      supabase
-        .from("damage_records")
-        .select("*")
-        .order("date", { ascending: false }),
-    ]);
+    const [itemsRes, logsRes, restocksRes, damageRes, sizeRes, settingsRes] =
+      await Promise.all([
+        supabase.from("items").select("*").order("name"),
+        supabase
+          .from("logs")
+          .select("*")
+          .order("borrow_date", { ascending: false })
+          .order("id", { ascending: false }),
+        supabase
+          .from("restocks")
+          .select("*")
+          .order("date", { ascending: false })
+          .order("id", { ascending: false }),
+        supabase
+          .from("damage_records")
+          .select("*")
+          .order("date", { ascending: false }),
+        supabase.rpc("get_db_size_mb"),
+        supabase.from("app_settings").select("key, value"),
+      ]);
     if (itemsRes.data) setItems(itemsRes.data.map(rowToItem));
     if (logsRes.data) setLogs(logsRes.data.map(rowToLog));
     if (restocksRes.data) setRestocks(restocksRes.data.map(rowToRestock));
     if (damageRes.data) setDamageRecords(damageRes.data.map(rowToDamageRecord));
+    if (typeof sizeRes.data === "number") setDbSizeMb(sizeRes.data);
+    if (settingsRes.data) {
+      const settingsMap = new Map<string, string | null>(
+        settingsRes.data.map((r: any) => [r.key, r.value]),
+      );
+      setLastClearedAt(settingsMap.get("last_cleared_at") ?? null);
+      setNotificationSettings(parseNotificationSettings(settingsMap));
+    }
     setLoading(false);
   }
 
   useEffect(() => {
     refresh();
   }, []);
+
+  // Keep data (and notifications) fresh: reload every minute while the tab
+  // is visible, and right away when the person comes back to the tab.
+  useEffect(() => {
+    if (!supabase) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function updateNotificationSettings(
+    patch: Partial<NotificationSettings>,
+  ): Promise<{ ok: boolean; message?: string }> {
+    const previous = notificationSettings;
+    const next = { ...previous, ...patch };
+    setNotificationSettings(next); // show the change immediately
+    if (!supabase) return { ok: true };
+
+    const now = new Date().toISOString();
+    const rows = (Object.keys(patch) as (keyof NotificationSettings)[]).map(
+      (k) => ({ key: NOTIF_KEYS[k], value: String(next[k]), updated_at: now }),
+    );
+    const { error } = await supabase.from("app_settings").upsert(rows);
+    if (error) {
+      console.error("Saving notification settings failed:", error);
+      setNotificationSettings(previous);
+      return {
+        ok: false,
+        message: friendlyError(error, "Could not save. Please try again."),
+      };
+    }
+    return { ok: true };
+  }
 
   async function addItem(
     input: NewItemInput,
@@ -277,7 +387,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
             supplier: input.supplier || "—",
             description: input.description || "",
             image: input.image,
-            lastUpdated: new Date().toISOString().slice(0, 10),
+            lastUpdated: localToday(),
             packPrice: input.packPrice || 0,
             packSize: input.packSize || 1,
             qtyStep: input.qtyStep || 1,
@@ -306,6 +416,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       qty_step: input.qtyStep || 1,
       returnable: input.returnable ?? input.category === "equipment",
       client_request_id: input.clientRequestId || null,
+      last_updated: localToday(),
     });
     if (error) {
       const isDuplicateSubmission =
@@ -345,7 +456,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
                 packSize: input.packSize ?? i.packSize,
                 qtyStep: input.qtyStep ?? i.qtyStep,
                 returnable: input.returnable ?? i.returnable,
-                lastUpdated: new Date().toISOString().slice(0, 10),
+                lastUpdated: localToday(),
               }
             : i,
         ),
@@ -372,7 +483,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         pack_size: input.packSize || 1,
         qty_step: input.qtyStep || 1,
         returnable: input.returnable ?? false,
-        last_updated: new Date().toISOString().slice(0, 10),
+        last_updated: localToday(),
       })
       .eq("id", id);
     if (error) return { ok: false, message: friendlyError(error) };
@@ -380,9 +491,36 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  // Changes stock by `delta` in ONE database step, so two people acting at
+  // the same time can't overwrite each other, and stock never goes below 0.
+  // Falls back to the old way if supabase/upgrade.sql has not been run yet.
+  async function changeStock(item: InventoryItem, delta: number) {
+    const { error } = await supabase!.rpc("adjust_stock", {
+      p_item_id: item.id,
+      p_delta: delta,
+      p_date: localToday(),
+    });
+    if (!error) return null;
+    if (error.code === "PGRST202") {
+      const { error: fallbackError } = await supabase!
+        .from("items")
+        .update({ stock: item.stock + delta, last_updated: localToday() })
+        .eq("id", item.id);
+      return fallbackError;
+    }
+    return error;
+  }
+
   async function deleteItem(
     id: number,
   ): Promise<{ ok: boolean; message?: string }> {
+    const stillOut = logs.filter((l) => l.itemId === id && l.status === "active");
+    if (stillOut.length > 0) {
+      return {
+        ok: false,
+        message: `This item is borrowed right now (${stillOut.map((l) => l.employee).join(", ")}). Return it first in Requests > History Log, then delete it.`,
+      };
+    }
     if (!supabase) {
       setItems((prev) => prev.filter((i) => i.id !== id));
       return { ok: true };
@@ -420,7 +558,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       ? 0
       : Math.round(unitCost(item) * input.qty * 100) / 100;
     const needsReturn = item.returnable;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
 
     if (!supabase) {
       setItems((prev) =>
@@ -454,7 +592,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
 
+    // Take the stock first (fails safely if someone else just took the last
+    // ones), then write the log. If the log fails, put the stock back.
+    const takeError = await changeStock(item, -input.qty);
+    if (takeError) return { ok: false, message: friendlyError(takeError) };
+
     const { error: logError } = await supabase.from("logs").insert({
+      borrow_date: localToday(),
       item_id: item.id,
       item: item.name,
       category: item.category,
@@ -481,21 +625,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       const isDuplicateSubmission =
         logError.code === "23505" &&
         (logError as any).message?.includes("client_request_id");
+      await changeStock(item, input.qty); // undo the stock change
       if (!isDuplicateSubmission) {
         return { ok: false, message: friendlyError(logError) };
       }
       await refresh();
       return { ok: true };
     }
-
-    const { error: itemError } = await supabase
-      .from("items")
-      .update({
-        stock: item.stock - input.qty,
-        last_updated: new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", item.id);
-    if (itemError) return { ok: false, message: friendlyError(itemError) };
 
     await refresh();
     return { ok: true };
@@ -521,7 +657,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
             ? {
                 ...l,
                 status: "returned",
-                returnedAt: new Date().toISOString().slice(0, 10),
+                returnedAt: localToday(),
                 approvedBy: currentStaff?.name ?? l.approvedBy,
                 conditionIn: conditionIn ?? l.conditionIn,
               }
@@ -531,7 +667,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
 
-    const { error: logError } = await supabase
+    const { data: returnedRows, error: logError } = await supabase
       .from("logs")
       .update({
         status: "returned",
@@ -539,18 +675,18 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         approved_by: currentStaff?.name ?? null,
         condition_in: conditionIn ?? null,
       })
-      .eq("display_id", logId);
+      .eq("display_id", logId)
+      .eq("status", "active") // so the same item can't be returned twice
+      .select("id");
     if (logError) return { ok: false, message: friendlyError(logError) };
+    if (!returnedRows || returnedRows.length === 0) {
+      await refresh();
+      return { ok: false, message: "This was already returned by someone else." };
+    }
 
     const item = items.find((i) => i.id === log.itemId);
     if (item) {
-      const { error: itemError } = await supabase
-        .from("items")
-        .update({
-          stock: item.stock + log.qty,
-          last_updated: new Date().toISOString().slice(0, 10),
-        })
-        .eq("id", item.id);
+      const itemError = await changeStock(item, log.qty);
       if (itemError) return { ok: false, message: friendlyError(itemError) };
     }
 
@@ -579,29 +715,34 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           item: item.name,
           qty: input.qty,
           name: input.name,
-          date: new Date().toISOString().slice(0, 10),
+          date: localToday(),
+          cost: input.cost || 0,
         },
         ...prev,
       ]);
       return { ok: true };
     }
 
-    const { error: restockError } = await supabase.from("restocks").insert({
+    const restockRow = {
       item_id: item.id,
       item: item.name,
       qty: input.qty,
       name: input.name,
-    });
+      staff_id: currentStaff?.id ?? null,
+      date: localToday(),
+    };
+    let { error: restockError } = await supabase
+      .from("restocks")
+      .insert({ ...restockRow, cost: input.cost || 0 });
+    // Older database without the "cost" column (upgrade.sql not run yet):
+    // still save the restock, just without the price.
+    if (restockError?.code === "PGRST204") {
+      ({ error: restockError } = await supabase.from("restocks").insert(restockRow));
+    }
     if (restockError)
       return { ok: false, message: friendlyError(restockError) };
 
-    const { error: itemError } = await supabase
-      .from("items")
-      .update({
-        stock: item.stock + input.qty,
-        last_updated: new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", item.id);
+    const itemError = await changeStock(item, input.qty);
     if (itemError) return { ok: false, message: friendlyError(itemError) };
 
     await refresh();
@@ -658,6 +799,39 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  async function clearHistory(
+    clearLogs: boolean,
+    clearRestocks: boolean,
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!clearLogs && !clearRestocks) {
+      return { ok: false, message: "Select at least one thing to clear." };
+    }
+
+    if (!supabase) {
+      if (clearLogs) setLogs([]);
+      if (clearRestocks) setRestocks([]);
+      setLastClearedAt(new Date().toISOString());
+      return { ok: true };
+    }
+
+    const { error } = await supabase.rpc("clear_history", {
+      p_clear_logs: clearLogs,
+      p_clear_restocks: clearRestocks,
+    });
+    if (error) {
+      console.error("clear_history failed:", error);
+      return {
+        ok: false,
+        message: friendlyError(
+          error,
+          `Could not clear history: ${error.message || "unknown error"}`,
+        ),
+      };
+    }
+    await refresh();
+    return { ok: true };
+  }
+
   return (
     <InventoryContext.Provider
       value={{
@@ -668,6 +842,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         damageRecords,
         loading,
         usingMockData,
+        dbSizeMb,
+        lastClearedAt,
+        notificationSettings,
+        updateNotificationSettings,
         refresh,
         addItem,
         updateItem,
@@ -676,6 +854,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         turnBackItem,
         restockItem,
         addDamageRecord,
+        clearHistory,
       }}
     >
       {children}

@@ -1,89 +1,110 @@
-# InvenTrack
+# InvenTrack (Inventory Tracker)
 
-Inventory tracker for papers, printing materials, marketing/production materials,
-merch, and production equipment — with PIN-based staff identity and real
-persistence via Supabase.
+Inventory app for the Creative Department. Staff sign in with their name and a PIN to pull out, borrow, return, and restock items. See **FEATURES.md** for what the app does.
 
-## 1. Install dependencies
+> ## ⚠️ Read this first before you clone
+>
+> 1. **Clone the `staging` branch.** It is the latest and working version. `main` is older.
+>    ```
+>    git clone -b staging https://github.com/itsronsairojordan-hub/Inventory-Tracker.git inventory-app
+>    ```
+> 2. **Never run `schema.sql` on the live database.** It deletes all tables first. For an existing database, run `upgrade.sql` instead.
+> 3. **Never put the Supabase `service_role` (secret) key in the app.** Only use the `anon` / publishable key.
+> 4. **Change the default Admin PIN (`0000`)** right after your first login.
 
-```
-npm install
-```
+File paths are written as `main folder > subfolder > file`.
 
-## 2. Set up Supabase (free)
+---
 
-1. Go to [supabase.com](https://supabase.com) and create a free account + new project.
-2. Open **SQL Editor** → New query → paste the entire contents of `supabase/schema.sql` → **Run**.
-   This creates the `staff`, `items`, and `logs` tables, the PIN-verification functions,
-   and seeds a default admin account (name: `Admin`, PIN: `0000` — change this PIN once you're in!)
-   plus the same demo items shown earlier.
-3. In your Supabase project, go to **Settings → API**. Copy the **Project URL** and the **anon public key**.
-4. Copy `.env.example` to `.env` and paste those two values in:
+## Step 1: Install
 
-```
-VITE_SUPABASE_URL=https://xxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=xxxxxxxxxxxxx
-```
+1. Install **Node.js 20+** from https://nodejs.org (this also installs `npm`) and **Git**. Check:
+   ```
+   node -v
+   npm -v
+   ```
+2. Clone (command above), then:
+   ```
+   cd inventory-app
+   npm install
+   ```
 
-## 3. Run it
+> `npm install` downloads every package the app needs into `inventory-app > node_modules` (only inside the project). Needs internet the first time. Run it once, or again when `package.json` changes. Never commit `node_modules`.
 
-```
-npm run dev
-```
+## Step 2: Database (Supabase)
 
-Open the printed `localhost` URL. Sign in as **Admin**, PIN **0000**.
+**New project:**
+1. https://supabase.com > **New project**. Region: **Singapore**. Save the database password.
+2. **SQL Editor > New query**, paste all of `inventory-app > supabase > schema.sql`, click **Run**.
+3. **Table Editor** should show: `staff`, `items`, `logs`, `restocks`, `damage_records`, `app_settings`.
 
-If you skip steps 2–4, the app still runs — it just uses local mock data
-that resets on every page refresh, instead of real Supabase data. Useful for
-quick UI testing, but borrow/turn-back actions won't persist or be visible
-to other devices.
+This creates the default login **Admin / 0000**.
 
-## 4. Deploy
+**Existing (live) database:** paste all of `inventory-app > supabase > upgrade.sql` and click **Run**. It is safe: it never deletes data, and can be run more than once. Run it on **both** staging and production after pulling new code.
 
-Push this folder to a GitHub repo, then import it on [vercel.com](https://vercel.com).
-Add the same two `VITE_SUPABASE_*` environment variables in the Vercel project
-settings before deploying.
+## Step 3: Connect the app
 
-## How sign-in works
+1. Supabase > **Project Settings > API**: copy the **Project URL** and **anon public key**.
+2. Create `inventory-app > .env`:
+   ```
+   VITE_SUPABASE_URL=https://your-project-id.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+3. Run `npm run dev`, open http://localhost:5173, log in as **Admin / 0000**.
+4. **Settings > Staff & PINs**: change the Admin PIN and add staff.
 
-There's no email/password. Each person picks their name and types their own
-PIN — this is what attributes every borrow and "Turn Back" action to the
-right individual, without the overhead of full accounts. Admins manage staff
-and PINs from **Settings → Staff & PINs**, including generating a personal QR
-code per person that pre-fills their name on the sign-in screen.
+> Login shows no names or the app shows demo data? Your `.env` is wrong. Fix it and restart `npm run dev`.
 
-**Heads up on security:** this PIN screen is an in-app identity check, not a
-database-level lock. The Supabase tables are reachable by anyone holding your
-public anon key (which ships inside the app bundle) — that's a normal,
-acceptable tradeoff for a small internal tool like this, but don't store
-anything sensitive in it.
+## Step 4: Deploy (Vercel)
+
+1. https://vercel.com > **Add New > Project** > import the repo.
+2. Framework **Vite**, build `npm run build`, output `dist`.
+3. Add the 2 variables from `.env`, then **Deploy**.
+
+> After changing a variable, **Redeploy**. After a new deploy, users press **Ctrl + Shift + R** to load it.
+
+## Step 5: Taking over an existing project
+
+Ask the old owner to **transfer the Supabase project** (**Project Settings > General > Transfer project**). URL and keys stay the same. Then reset the database password and run `upgrade.sql`.
+
+---
 
 ## Project structure
 
 ```
-src/
-  context/
-    AuthContext.tsx        PIN login, staff list, session (localStorage)
-    InventoryContext.tsx   items/logs — reads & writes Supabase
-  components/
-    CategoryChips.tsx      category filter w/ Materials dropdown
-    ImageUpload.tsx         drag-and-drop photo upload
-    ItemIcon.tsx            photo or initials badge (no emoji)
-  pages/
-    Login.tsx, Dashboard.tsx, Inventory.tsx, AddItem.tsx,
-    Requests.tsx, HistoryPage.tsx, Employees.tsx, Reports.tsx, Settings.tsx
-supabase/
-  schema.sql                run this once in Supabase's SQL Editor
+inventory-app
+├── .env                        Supabase URL + key (not in Git)
+├── supabase
+│   ├── schema.sql              NEW projects only (deletes everything first)
+│   └── upgrade.sql             EXISTING databases (safe, no data loss)
+└── src
+    ├── App.tsx                 Sidebar, pages, admin vs staff access
+    ├── types.ts                Data types and categories
+    ├── context
+    │   ├── AuthContext.tsx     PIN login, session, staff, roles
+    │   └── InventoryContext.tsx  All database reads and writes
+    ├── lib
+    │   ├── csv.ts              Import/export format, dated file names
+    │   ├── report.ts           Monthly report (used + bought)
+    │   ├── notifications.ts    Bell alerts
+    │   ├── history.ts          "Clear history" reminder
+    │   └── dates.ts            Local date (Philippine time)
+    ├── components              Popups and small UI pieces
+    └── pages                   Dashboard, Inventory, AddItem, Requests,
+                                RestockPage, Employees, Reports, Settings, Login
 ```
 
-## Known limitations (good next steps)
+## Good to know
 
-- **Photos are stored as base64 text**, not in real file storage. Fine for a
-  handful of small images; if photo uploads get heavy, move to Supabase
-  Storage and store just the URL.
-- **No live multi-device sync** — if two people use the app at the same time,
-  each only sees the other's changes after refreshing. Supabase Realtime
-  subscriptions would close this gap later.
-- **QR codes** are generated via a free public API (`api.qrserver.com`) so no
-  extra package is needed — swap to a local QR library if you need this to
-  work fully offline.
+- **PIN login is not strong security.** Anyone with the anon key could change data through the database. Fine for an internal tool, not for sensitive data.
+- **Photos and receipts are stored inside the database** and use the 500 MB free limit. Watch the storage bar in **Settings > Database**.
+- **Free Supabase projects pause after about a week unused.** If data stops loading, click **Restore project** in Supabase.
+- **Costs need a pack price.** Items without one show "No price set" in Reports. Old pull-outs keep the price they had at the time.
+- **Stock changes are done in one database step** (`adjust_stock`), so two people can't overwrite each other and stock never goes below 0. Needs `upgrade.sql`.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Run locally |
+| `npm run build` | Build for production (run before pushing to catch errors) |
