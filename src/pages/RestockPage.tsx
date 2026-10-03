@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PackagePlus, Search, Check, Minus, Plus, X } from "lucide-react";
 import { useInventory } from "../context/InventoryContext";
 import { useAuth } from "../context/AuthContext";
-import { InventoryItem, CATEGORIES, getStockStatus } from "../types";
+import { InventoryItem, CATEGORIES, getStockStatus, unitCost } from "../types";
 import ItemIcon from "../components/ItemIcon";
 import StatusBadge from "../components/StatusBadge";
 
@@ -36,11 +36,20 @@ export default function RestockPage() {
   const packSize = selectedItem?.packSize || 1;
   const hasPacks = packSize > 1;
   const unitsToAdd = countIn === "pack" ? qty * packSize : qty;
+  // Price paid: filled in from the item's pack price, but can be changed
+  // (null = use the automatic amount).
+  const [priceText, setPriceText] = useState<string | null>(null);
+  const autoPrice = selectedItem
+    ? Math.round(unitCost(selectedItem) * unitsToAdd * 100) / 100
+    : 0;
+  const pricePaid =
+    priceText === null ? autoPrice : Math.max(0, parseFloat(priceText) || 0);
 
   function open(item: InventoryItem) {
     setSelectedItem(item);
     setCountIn((item.packSize || 1) > 1 ? "pack" : "unit");
     setQty(1);
+    setPriceText(null);
     setError("");
     setSaved(false);
   }
@@ -63,6 +72,7 @@ export default function RestockPage() {
       qty: unitsToAdd,
       // Recorded automatically as the person who is logged in.
       name: currentStaff?.name || "Unknown",
+      cost: pricePaid,
     });
     setSubmitting(false);
     if (!result.ok) {
@@ -165,8 +175,15 @@ export default function RestockPage() {
                   {r.date} · by {r.name}
                 </div>
               </div>
-              <span className="text-sm font-semibold text-green-600 dark:text-green-400 flex-shrink-0">
-                +{r.qty}
+              <span className="text-right flex-shrink-0">
+                <span className="block text-sm font-semibold text-green-600 dark:text-green-400">
+                  +{r.qty}
+                </span>
+                {r.cost > 0 && (
+                  <span className="block text-xs text-muted-foreground">
+                    ₱{r.cost.toFixed(2)}
+                  </span>
+                )}
               </span>
             </div>
           ))}
@@ -249,7 +266,7 @@ export default function RestockPage() {
                 <button
                   type="button"
                   onClick={() => setQty((q) => Math.max(1, q - 1))}
-                  className="w-11 h-11 rounded-lg border border-border flex items-center justify-center hover:bg-muted/50"
+                  className="w-11 h-11 flex-shrink-0 rounded-lg border border-border flex items-center justify-center hover:bg-muted/50"
                   aria-label="Less"
                 >
                   <Minus className="w-4 h-4" />
@@ -264,7 +281,7 @@ export default function RestockPage() {
                 <button
                   type="button"
                   onClick={() => setQty((q) => q + 1)}
-                  className="w-11 h-11 rounded-lg border border-border flex items-center justify-center hover:bg-muted/50"
+                  className="w-11 h-11 flex-shrink-0 rounded-lg border border-border flex items-center justify-center hover:bg-muted/50"
                   aria-label="More"
                 >
                   <Plus className="w-4 h-4" />
@@ -282,6 +299,27 @@ export default function RestockPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <div className="text-sm font-medium text-foreground mb-1.5">
+                Price paid (₱){" "}
+                <span className="text-muted-foreground font-normal">optional</span>
+              </div>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={priceText ?? (autoPrice ? String(autoPrice) : "")}
+                onChange={(e) => setPriceText(e.target.value)}
+                placeholder="e.g. 300"
+                className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {autoPrice > 0
+                  ? "Filled in from the item's pack price. Change it if you paid a different amount."
+                  : "This item has no pack price. Type what you paid so it shows in Reports."}
+              </p>
             </div>
 
             <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm flex items-center justify-between">

@@ -32,9 +32,9 @@ export default function Dashboard({ setPage }: { setPage: (p: string) => void })
   const { currentStaff } = useAuth();
 
   const now = new Date();
-  const thisMonth = buildMonthlyUsage(logs, damageRecords, now.getFullYear(), now.getMonth());
+  const thisMonth = buildMonthlyUsage(logs, damageRecords, restocks, items, now.getFullYear(), now.getMonth());
   const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonth = buildMonthlyUsage(logs, damageRecords, lastMonthDate.getFullYear(), lastMonthDate.getMonth());
+  const lastMonth = buildMonthlyUsage(logs, damageRecords, restocks, items, lastMonthDate.getFullYear(), lastMonthDate.getMonth());
 
   const outItems = items.filter((i) => getStockStatus(i) === "out");
   const lowItems = items.filter((i) => getStockStatus(i) === "low");
@@ -43,10 +43,8 @@ export default function Dashboard({ setPage }: { setPage: (p: string) => void })
     .map((l) => ({ ...l, days: daysSince(l.borrowDate) }))
     .sort((a, b) => b.days - a.days);
   const overdue = borrowed.filter((l) => l.days > notificationSettings.overdueDays);
-  const pullOutsThisMonth = logs.filter((l) => {
-    const d = new Date(l.borrowDate);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length;
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const pullOutsThisMonth = logs.filter((l) => l.borrowDate.startsWith(monthPrefix)).length;
 
   const { due: reminderDue, daysSinceCleared, oldestRecordDays } = getClearReminder(
     lastClearedAt,
@@ -96,7 +94,7 @@ export default function Dashboard({ setPage }: { setPage: (p: string) => void })
             title="Download this month's usage report (opens in Excel)"
             onClick={() =>
               downloadCSV(
-                datedFilename(`usage-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`),
+                datedFilename(`report-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`),
                 usageToCSV(thisMonth),
               )
             }

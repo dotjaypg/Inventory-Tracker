@@ -1,6 +1,6 @@
 # InvenTrack (Inventory Tracker)
 
-Inventory app for the Creative Department. Staff sign in with their name and a PIN to pull out, borrow, return, and restock items.
+Inventory app for the Creative Department. Staff sign in with their name and a PIN to pull out, borrow, return, and restock items. See **FEATURES.md** for what the app does.
 
 > ## ⚠️ Read this first before you clone
 >
@@ -8,68 +8,64 @@ Inventory app for the Creative Department. Staff sign in with their name and a P
 >    ```
 >    git clone -b staging https://github.com/itsronsairojordan-hub/Inventory-Tracker.git inventory-app
 >    ```
-> 2. **Never run `schema.sql` on the live database.** It deletes all tables first. Only run it on a new, empty Supabase project.
+> 2. **Never run `schema.sql` on the live database.** It deletes all tables first. For an existing database, run `upgrade.sql` instead.
 > 3. **Never put the Supabase `service_role` (secret) key in the app.** Only use the `anon` / publishable key.
 > 4. **Change the default Admin PIN (`0000`)** right after your first login.
 
-File paths below are written as `main folder > subfolder > file`.
+File paths are written as `main folder > subfolder > file`.
 
 ---
 
 ## Step 1: Install
 
-1. Install **Node.js 20+** and **Git**.
-2. Clone the repo (command in the box above), then:
+1. Install **Node.js 20+** from https://nodejs.org (this also installs `npm`) and **Git**. Check:
+   ```
+   node -v
+   npm -v
+   ```
+2. Clone (command above), then:
    ```
    cd inventory-app
    npm install
    ```
 
-## Step 2: Build the database (Supabase)
+> `npm install` downloads every package the app needs into `inventory-app > node_modules` (only inside the project). Needs internet the first time. Run it once, or again when `package.json` changes. Never commit `node_modules`.
 
-> Taking over the existing live database instead? Skip to **Step 5**.
+## Step 2: Database (Supabase)
 
-1. Go to https://supabase.com and click **New project**. Region: **Singapore**. Save the database password.
-2. Open **SQL Editor > New query**.
-3. Copy everything in `inventory-app > supabase > schema.sql`, paste it, and click **Run**.
-4. Open **Table Editor** and check that these 6 tables exist: `staff`, `items`, `logs`, `restocks`, `damage_records`, `app_settings`.
+**New project:**
+1. https://supabase.com > **New project**. Region: **Singapore**. Save the database password.
+2. **SQL Editor > New query**, paste all of `inventory-app > supabase > schema.sql`, click **Run**.
+3. **Table Editor** should show: `staff`, `items`, `logs`, `restocks`, `damage_records`, `app_settings`.
 
-This also creates the default login: **Admin** / PIN **0000**.
+This creates the default login **Admin / 0000**.
+
+**Existing (live) database:** paste all of `inventory-app > supabase > upgrade.sql` and click **Run**. It is safe: it never deletes data, and can be run more than once. Run it on **both** staging and production after pulling new code.
 
 ## Step 3: Connect the app
 
-1. In Supabase, go to **Project Settings > API** and copy the **Project URL** and the **anon public key**.
-2. Create the file `inventory-app > .env` with:
+1. Supabase > **Project Settings > API**: copy the **Project URL** and **anon public key**.
+2. Create `inventory-app > .env`:
    ```
    VITE_SUPABASE_URL=https://your-project-id.supabase.co
    VITE_SUPABASE_ANON_KEY=your-anon-key
    ```
-3. Run the app:
-   ```
-   npm run dev
-   ```
-4. Open http://localhost:5173 and log in as **Admin** / **0000**.
-5. Go to **Settings > Staff & PINs**, change the Admin PIN, and add the staff.
+3. Run `npm run dev`, open http://localhost:5173, log in as **Admin / 0000**.
+4. **Settings > Staff & PINs**: change the Admin PIN and add staff.
 
-> If the app shows demo data or the login has no names, your `.env` is wrong. Fix it and restart `npm run dev`.
+> Login shows no names or the app shows demo data? Your `.env` is wrong. Fix it and restart `npm run dev`.
 
 ## Step 4: Deploy (Vercel)
 
-1. Go to https://vercel.com, click **Add New > Project**, and import the repo.
-2. Framework: **Vite**. Build command: `npm run build`. Output folder: `dist`.
-3. Add the same 2 environment variables from your `.env`.
-4. Click **Deploy**.
+1. https://vercel.com > **Add New > Project** > import the repo.
+2. Framework **Vite**, build `npm run build`, output `dist`.
+3. Add the 2 variables from `.env`, then **Deploy**.
 
-> If you change an environment variable later, you must **Redeploy** for it to take effect.
+> After changing a variable, **Redeploy**. After a new deploy, users press **Ctrl + Shift + R** to load it.
 
-## Step 5: Taking over the existing database
+## Step 5: Taking over an existing project
 
-The easiest way is to have the old owner **transfer the Supabase project** to you:
-**Project Settings > General > Transfer project**.
-The URL and keys stay the same, so nothing in the app or Vercel needs to change. After the transfer, reset the database password and save it.
-
-Then update the existing database with the latest fixes (safe, does not delete data):
-**SQL Editor > New query**, paste everything in `inventory-app > supabase > fix-clear-history.sql`, and click **Run**.
+Ask the old owner to **transfer the Supabase project** (**Project Settings > General > Transfer project**). URL and keys stay the same. Then reset the database password and run `upgrade.sql`.
 
 ---
 
@@ -77,63 +73,38 @@ Then update the existing database with the latest fixes (safe, does not delete d
 
 ```
 inventory-app
-├── .env                  Supabase URL + key (not in Git)
+├── .env                        Supabase URL + key (not in Git)
 ├── supabase
-│   ├── schema.sql        The whole database. NEW projects only (deletes everything first)
-│   └── fix-clear-history.sql  Safe update for an EXISTING database (no data loss)
+│   ├── schema.sql              NEW projects only (deletes everything first)
+│   └── upgrade.sql             EXISTING databases (safe, no data loss)
 └── src
-    ├── App.tsx           Sidebar and which pages admin/staff can see
-    ├── types.ts          Data types and categories
-    ├── lib
-    │   ├── supabase.ts   Supabase connection
-    │   ├── history.ts    When to show the "clear history" reminder
-    │   ├── report.ts     Monthly material usage + Excel export (Reports and Dashboard)
-    │   └── notifications.ts  Builds the bell alerts (low stock, overdue, new)
+    ├── App.tsx                 Sidebar, pages, admin vs staff access
+    ├── types.ts                Data types and categories
     ├── context
-    │   ├── AuthContext.tsx       Login, staff, PINs, roles
+    │   ├── AuthContext.tsx     PIN login, session, staff, roles
     │   └── InventoryContext.tsx  All database reads and writes
-    └── pages             One file per screen (Dashboard, Inventory, AddItem, Requests, RestockPage, Employees, Reports, Settings)
+    ├── lib
+    │   ├── csv.ts              Import/export format, dated file names
+    │   ├── report.ts           Monthly report (used + bought)
+    │   ├── notifications.ts    Bell alerts
+    │   ├── history.ts          "Clear history" reminder
+    │   └── dates.ts            Local date (Philippine time)
+    ├── components              Popups and small UI pieces
+    └── pages                   Dashboard, Inventory, AddItem, Requests,
+                                RestockPage, Employees, Reports, Settings, Login
 ```
-
-## Recent fixes
-
-| Problem | Fix | File |
-|---|---|---|
-| Clear History showed "Something went wrong" | Supabase blocks deletes with no filter, so the function now uses `where id is not null`. Errors now show the real reason. | `inventory-app > supabase > fix-clear-history.sql`, `inventory-app > src > context > InventoryContext.tsx` |
-| "Clear history" warning showed after just 1 pull-out | Now only shows when the oldest record is 30+ days old, or 30+ days after the last clear | `inventory-app > src > lib > history.ts` |
-| "Pulled Out" count on Employees stuck at 0 | Now counts by the staff account that was logged in during the pull-out | `inventory-app > src > pages > Employees.tsx` |
-| "Borrow Log" badge looked stuck at 0 | Not a bug: it only counts equipment not yet returned. Materials are logged as used up. Added a "not yet returned" tooltip. | `inventory-app > src > pages > Requests.tsx` |
-| Clear History could erase borrowed items that were not returned yet | Clear History is now blocked (in the app and in the database) until every borrowed item is returned | `inventory-app > src > pages > Settings.tsx`, `inventory-app > supabase > fix-clear-history.sql` |
-| Notifications tab was only a placeholder | Now working: bell icon in the top bar for low stock, overdue borrowed items, and new pull-outs. Admins turn each one on or off and set the overdue days in **Settings > Notifications**. Data refreshes every minute. | `inventory-app > src > components > NotificationBell.tsx`, `inventory-app > src > lib > notifications.ts` |
-| Exported files had fixed names | Every export is now named `name-YYYY-MM-DD.csv` (e.g. `inventory-2026-10-04.csv`) using `datedFilename()` | `inventory-app > src > lib > csv.ts` |
-| Restock page was hard to use (form far below the list on phones, name typed by hand) | Items needing restock are listed first with a Restock button. Tapping opens a popup with +/- and quick-add buttons, shows "stock after", and records the logged-in staff automatically. | `inventory-app > src > pages > RestockPage.tsx` |
-| Import was split between Inventory and Settings, imported blindly, and created duplicates | One place: **Inventory > Import** opens a 3-step popup (download template, fill in, upload). Shows a preview before adding, skips items that already exist, and lists rows that need fixing. Template uses plain column names and accepts old files. | `inventory-app > src > components > ImportItemsModal.tsx`, `inventory-app > src > lib > csv.ts` |
-| History tab duplicated the Borrow Log | History tab removed. **Requests > History Log** (renamed from Borrow Log) now has search, Export, and total cost | `inventory-app > src > pages > Requests.tsx` |
-| Dashboard "Export Report" and Reports export buttons did nothing | Both work now: they download the monthly usage report (opens in Excel). Reports also has Print / Save PDF. | `inventory-app > src > lib > report.ts` |
-| Reports, Dashboard and Employees were hard to read | Reports is now one simple monthly usage report: pick a month, see each material used, how much, and its cost, plus a total. Dashboard shows what needs attention, what is borrowed, top materials this month, and recent activity. Employees explains roles, has a visible role button, and a "View activity" popup per person. | `inventory-app > src > pages > Reports.tsx`, `inventory-app > src > pages > Dashboard.tsx`, `inventory-app > src > pages > Employees.tsx` |
-| Restock page | Recent restocks now sit beside the item list on bigger screens | `inventory-app > src > pages > RestockPage.tsx` |
-| Refreshing the page logged you out | Login now survives a refresh. You are logged out when the tab is closed, you click logout, or after 12 hours. | `inventory-app > src > context > AuthContext.tsx` |
-
-> **Using an existing database?** Run `inventory-app > supabase > fix-clear-history.sql` once in the SQL Editor (on both staging and production databases) or Clear History will keep failing.
 
 ## Good to know
 
-- **The PIN login is not strong security.** Anyone with the anon key could change PINs through the database. It is fine for an internal tool, but do not store sensitive data in it.
-- **Deleting a staff member who has history will fail.** To fix it, run this once in the SQL Editor:
-  ```sql
-  alter table logs drop constraint logs_staff_id_fkey;
-  alter table logs add constraint logs_staff_id_fkey
-    foreign key (staff_id) references staff(id) on delete set null;
-  alter table restocks drop constraint restocks_staff_id_fkey;
-  alter table restocks add constraint restocks_staff_id_fkey
-    foreign key (staff_id) references staff(id) on delete set null;
-  ```
-- **Photos and receipts are saved inside the database**, so they use up the 500 MB free limit quickly. Check the storage bar in **Settings**.
-- **Free Supabase projects pause after about a week of no use.** If data stops loading, open the Supabase dashboard and click **Restore project**.
+- **PIN login is not strong security.** Anyone with the anon key could change data through the database. Fine for an internal tool, not for sensitive data.
+- **Photos and receipts are stored inside the database** and use the 500 MB free limit. Watch the storage bar in **Settings > Database**.
+- **Free Supabase projects pause after about a week unused.** If data stops loading, click **Restore project** in Supabase.
+- **Costs need a pack price.** Items without one show "No price set" in Reports. Old pull-outs keep the price they had at the time.
+- **Stock changes are done in one database step** (`adjust_stock`), so two people can't overwrite each other and stock never goes below 0. Needs `upgrade.sql`.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `npm run dev` | Run locally |
-| `npm run build` | Build for production (run this before pushing to check for errors) |
+| `npm run build` | Build for production (run before pushing to catch errors) |

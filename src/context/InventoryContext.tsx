@@ -25,6 +25,7 @@ import {
   seedRestocks,
 } from "../data/mockData";
 import { useAuth } from "./AuthContext";
+import { localToday } from "../lib/dates";
 
 // Turns raw Postgres/Supabase error objects into plain-language messages.
 // Falls back to a generic message for anything we don't specifically recognize,
@@ -43,6 +44,9 @@ function friendlyError(
       return "One of the values entered isn't valid for this field.";
     case "42501": // insufficient_privilege (RLS/permissions)
       return "You don't have permission to do that. Make sure your database is set up correctly.";
+    case "P0001": // message raised on purpose by our own database functions
+    case "P0002":
+      return error.message || fallback;
     default:
       return fallback;
   }
@@ -82,6 +86,7 @@ interface RestockInput {
   itemId: number;
   qty: number;
   name: string;
+  cost?: number; // pesos paid; defaults to 0
 }
 
 export interface DamageRecordInput {
@@ -220,6 +225,7 @@ function rowToRestock(row: any): RestockEntry {
     qty: row.qty,
     name: row.name,
     date: row.date,
+    cost: Number(row.cost) || 0,
   };
 }
 
@@ -277,11 +283,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         supabase
           .from("logs")
           .select("*")
-          .order("borrow_date", { ascending: false }),
+          .order("borrow_date", { ascending: false })
+          .order("id", { ascending: false }),
         supabase
           .from("restocks")
           .select("*")
-          .order("date", { ascending: false }),
+          .order("date", { ascending: false })
+          .order("id", { ascending: false }),
         supabase
           .from("damage_records")
           .select("*")
@@ -379,7 +387,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
             supplier: input.supplier || "—",
             description: input.description || "",
             image: input.image,
-            lastUpdated: new Date().toISOString().slice(0, 10),
+            lastUpdated: localToday(),
             packPrice: input.packPrice || 0,
             packSize: input.packSize || 1,
             qtyStep: input.qtyStep || 1,
@@ -408,6 +416,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       qty_step: input.qtyStep || 1,
       returnable: input.returnable ?? input.category === "equipment",
       client_request_id: input.clientRequestId || null,
+      last_updated: localToday(),
     });
     if (error) {
       const isDuplicateSubmission =
@@ -447,7 +456,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
                 packSize: input.packSize ?? i.packSize,
                 qtyStep: input.qtyStep ?? i.qtyStep,
                 returnable: input.returnable ?? i.returnable,
-                lastUpdated: new Date().toISOString().slice(0, 10),
+                lastUpdated: localToday(),
               }
             : i,
         ),
@@ -474,7 +483,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         pack_size: input.packSize || 1,
         qty_step: input.qtyStep || 1,
         returnable: input.returnable ?? false,
-        last_updated: new Date().toISOString().slice(0, 10),
+        last_updated: localToday(),
       })
       .eq("id", id);
     if (error) return { ok: false, message: friendlyError(error) };
@@ -482,9 +491,36 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }
 
+  // Changes stock by `delta` in ONE database step, so two people acting at
+  // the same time can't overwrite each other, and stock never goes below 0.
+  // Falls back to the old way if supabase/upgrade.sql has not been run yet.
+  async function changeStock(item: InventoryItem, delta: number) {
+    const { error } = await supabase!.rpc("adjust_stock", {
+      p_item_id: item.id,
+      p_delta: delta,
+      p_date: localToday(),
+    });
+    if (!error) return null;
+    if (error.code === "PGRST202") {
+      const { error: fallbackError } = await supabase!
+        .from("items")
+        .update({ stock: item.stock + delta, last_updated: localToday() })
+        .eq("id", item.id);
+      return fallbackError;
+    }
+    return error;
+  }
+
   async function deleteItem(
     id: number,
   ): Promise<{ ok: boolean; message?: string }> {
+    const stillOut = logs.filter((l) => l.itemId === id && l.status === "active");
+    if (stillOut.length > 0) {
+      return {
+        ok: false,
+        message: `This item is borrowed right now (${stillOut.map((l) => l.employee).join(", ")}). Return it first in Requests > History Log, then delete it.`,
+      };
+    }
     if (!supabase) {
       setItems((prev) => prev.filter((i) => i.id !== id));
       return { ok: true };
@@ -522,7 +558,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       ? 0
       : Math.round(unitCost(item) * input.qty * 100) / 100;
     const needsReturn = item.returnable;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
 
     if (!supabase) {
       setItems((prev) =>
@@ -556,7 +592,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
 
+    // Take the stock first (fails safely if someone else just took the last
+    // ones), then write the log. If the log fails, put the stock back.
+    const takeError = await changeStock(item, -input.qty);
+    if (takeError) return { ok: false, message: friendlyError(takeError) };
+
     const { error: logError } = await supabase.from("logs").insert({
+      borrow_date: localToday(),
       item_id: item.id,
       item: item.name,
       category: item.category,
@@ -583,21 +625,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       const isDuplicateSubmission =
         logError.code === "23505" &&
         (logError as any).message?.includes("client_request_id");
+      await changeStock(item, input.qty); // undo the stock change
       if (!isDuplicateSubmission) {
         return { ok: false, message: friendlyError(logError) };
       }
       await refresh();
       return { ok: true };
     }
-
-    const { error: itemError } = await supabase
-      .from("items")
-      .update({
-        stock: item.stock - input.qty,
-        last_updated: new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", item.id);
-    if (itemError) return { ok: false, message: friendlyError(itemError) };
 
     await refresh();
     return { ok: true };
@@ -623,7 +657,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
             ? {
                 ...l,
                 status: "returned",
-                returnedAt: new Date().toISOString().slice(0, 10),
+                returnedAt: localToday(),
                 approvedBy: currentStaff?.name ?? l.approvedBy,
                 conditionIn: conditionIn ?? l.conditionIn,
               }
@@ -633,7 +667,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
 
-    const { error: logError } = await supabase
+    const { data: returnedRows, error: logError } = await supabase
       .from("logs")
       .update({
         status: "returned",
@@ -641,18 +675,18 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         approved_by: currentStaff?.name ?? null,
         condition_in: conditionIn ?? null,
       })
-      .eq("display_id", logId);
+      .eq("display_id", logId)
+      .eq("status", "active") // so the same item can't be returned twice
+      .select("id");
     if (logError) return { ok: false, message: friendlyError(logError) };
+    if (!returnedRows || returnedRows.length === 0) {
+      await refresh();
+      return { ok: false, message: "This was already returned by someone else." };
+    }
 
     const item = items.find((i) => i.id === log.itemId);
     if (item) {
-      const { error: itemError } = await supabase
-        .from("items")
-        .update({
-          stock: item.stock + log.qty,
-          last_updated: new Date().toISOString().slice(0, 10),
-        })
-        .eq("id", item.id);
+      const itemError = await changeStock(item, log.qty);
       if (itemError) return { ok: false, message: friendlyError(itemError) };
     }
 
@@ -681,29 +715,34 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           item: item.name,
           qty: input.qty,
           name: input.name,
-          date: new Date().toISOString().slice(0, 10),
+          date: localToday(),
+          cost: input.cost || 0,
         },
         ...prev,
       ]);
       return { ok: true };
     }
 
-    const { error: restockError } = await supabase.from("restocks").insert({
+    const restockRow = {
       item_id: item.id,
       item: item.name,
       qty: input.qty,
       name: input.name,
-    });
+      staff_id: currentStaff?.id ?? null,
+      date: localToday(),
+    };
+    let { error: restockError } = await supabase
+      .from("restocks")
+      .insert({ ...restockRow, cost: input.cost || 0 });
+    // Older database without the "cost" column (upgrade.sql not run yet):
+    // still save the restock, just without the price.
+    if (restockError?.code === "PGRST204") {
+      ({ error: restockError } = await supabase.from("restocks").insert(restockRow));
+    }
     if (restockError)
       return { ok: false, message: friendlyError(restockError) };
 
-    const { error: itemError } = await supabase
-      .from("items")
-      .update({
-        stock: item.stock + input.qty,
-        last_updated: new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", item.id);
+    const itemError = await changeStock(item, input.qty);
     if (itemError) return { ok: false, message: friendlyError(itemError) };
 
     await refresh();

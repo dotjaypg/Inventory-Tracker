@@ -8,10 +8,10 @@ const peso = (n: number) =>
   `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function ReportsPage() {
-  const { logs, damageRecords } = useInventory();
+  const { logs, damageRecords, restocks, items } = useInventory();
   const now = new Date();
   const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
-  const u = buildMonthlyUsage(logs, damageRecords, cursor.y, cursor.m);
+  const u = buildMonthlyUsage(logs, damageRecords, restocks, items, cursor.y, cursor.m);
   const isCurrentMonth = cursor.y === now.getFullYear() && cursor.m === now.getMonth();
 
   function shift(delta: number) {
@@ -53,7 +53,7 @@ export default function ReportsPage() {
           <button
             onClick={() =>
               downloadCSV(
-                datedFilename(`usage-${u.year}-${String(u.month + 1).padStart(2, "0")}`),
+                datedFilename(`report-${u.year}-${String(u.month + 1).padStart(2, "0")}`),
                 usageToCSV(u),
               )
             }
@@ -64,15 +64,22 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Total */}
-      <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
-        <div className="text-sm text-muted-foreground">Total used in {u.label}</div>
-        <div className="text-3xl font-bold text-foreground mt-1">{peso(u.totalCost)}</div>
-        {u.repairsCost > 0 && (
+      {/* Totals: what was used vs what was bought */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+          <div className="text-sm text-muted-foreground">Used (pull-outs)</div>
+          <div className="text-3xl font-bold text-foreground mt-1">{peso(u.totalCost)}</div>
           <div className="text-xs text-muted-foreground mt-1">
-            Materials {peso(u.materialsCost)} + repairs {peso(u.repairsCost)}
+            {u.repairsCost > 0
+              ? `Materials ${peso(u.materialsCost)} + repairs ${peso(u.repairsCost)}`
+              : "Value of materials taken out"}
           </div>
-        )}
+        </div>
+        <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+          <div className="text-sm text-muted-foreground">Bought (restocks)</div>
+          <div className="text-3xl font-bold text-foreground mt-1">{peso(u.restockCost)}</div>
+          <div className="text-xs text-muted-foreground mt-1">Money paid to restock items</div>
+        </div>
       </div>
 
       {/* Materials used */}
@@ -131,6 +138,55 @@ export default function ReportsPage() {
           Only pull-outs made after that will show a cost.
         </p>
       )}
+
+      {/* Restocked */}
+      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-border">
+          <h3 className="font-semibold text-foreground">Restocked</h3>
+        </div>
+        {u.restocked.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">
+            Nothing was restocked in {u.label}.
+          </p>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="bg-muted/50 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                <th className="text-left px-5 py-2.5">Item</th>
+                <th className="text-right px-5 py-2.5">Added</th>
+                <th className="text-right px-5 py-2.5">Paid</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {u.restocked.map((m) => (
+                <tr key={`${m.item}|${m.unit}`}>
+                  <td className="px-5 py-3 text-sm font-medium text-foreground">{m.item}</td>
+                  <td className="px-5 py-3 text-sm text-right text-muted-foreground whitespace-nowrap">
+                    {m.qty.toLocaleString()} {m.unit}
+                  </td>
+                  <td className="px-5 py-3 text-sm text-right whitespace-nowrap">
+                    {m.cost > 0 ? (
+                      <span className="font-semibold text-foreground">{peso(m.cost)}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No price entered</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-border bg-muted/30">
+                <td className="px-5 py-3 text-sm font-semibold text-foreground" colSpan={2}>
+                  Total
+                </td>
+                <td className="px-5 py-3 text-sm text-right font-bold text-foreground">
+                  {peso(u.restockCost)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
 
       {/* Repairs, only when there are any */}
       {u.repairs.length > 0 && (

@@ -15,6 +15,7 @@ drop view if exists staff_public;
 drop function if exists verify_pin(uuid, text);
 drop function if exists create_staff(text, text, text);
 drop function if exists set_pin(uuid, text);
+drop function if exists adjust_stock(bigint, integer, date);
 drop table if exists app_settings;
 drop table if exists damage_records;
 drop table if exists restocks;
@@ -68,7 +69,7 @@ create table logs (
   category text not null,
   qty integer not null,
   unit text not null,
-  staff_id uuid references staff(id),
+  staff_id uuid references staff(id) on delete set null,
   employee text not null,
   dept text default '',
   purpose text default '',
@@ -92,9 +93,10 @@ create table restocks (
   item_id bigint references items(id) on delete set null,
   item text not null,
   qty integer not null,
-  staff_id uuid references staff(id),
+  staff_id uuid references staff(id) on delete set null,
   name text not null,           -- who restocked it
-  date date not null default current_date
+  date date not null default current_date,
+  cost numeric not null default 0  -- pesos paid for this restock (shown in Reports)
 );
 
 -- ─── Damage Records ──────────────────────────────────────────────────────────
@@ -223,6 +225,32 @@ begin
 end;
 $$;
 
+
+-- Changes an item's stock in ONE step so two people acting at the same time
+-- can't overwrite each other. Refuses to go below 0.
+create or replace function adjust_stock(p_item_id bigint, p_delta integer, p_date date default current_date)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_stock integer;
+begin
+  update items
+     set stock = stock + p_delta, last_updated = p_date
+   where id = p_item_id and stock + p_delta >= 0
+  returning stock into new_stock;
+  if new_stock is null then
+    if not exists (select 1 from items where id = p_item_id) then
+      raise exception 'This item no longer exists. Refresh the page.' using errcode = 'P0002';
+    end if;
+    raise exception 'Not enough stock left. Someone may have just taken it. Refresh and try again.' using errcode = 'P0001';
+  end if;
+  return new_stock;
+end;
+$$;
+
 -- ─── A safe public view: name + role only, never the pin hash ──────────────
 create or replace view staff_public as
   select id, name, role from staff;
@@ -320,6 +348,7 @@ grant select, insert on damage_records to anon, authenticated;
 grant select, insert, update on app_settings to anon, authenticated;
 grant execute on function get_db_size_mb() to anon, authenticated;
 grant execute on function clear_history(boolean, boolean) to anon, authenticated;
+grant execute on function adjust_stock(bigint, integer, date) to anon, authenticated;
 grant select on staff_public to anon, authenticated;
 grant execute on function verify_pin(uuid, text) to anon, authenticated;
 grant execute on function create_staff(text, text, text) to anon, authenticated;

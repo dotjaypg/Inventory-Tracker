@@ -96,6 +96,7 @@ export interface RestockEntry {
   qty: number;
   name: string; // who restocked it
   date: string;
+  cost: number; // pesos paid for this restock (0 if not known)
 }
 
 // ─── Damage Records ──────────────────────────────────────────────────────────
