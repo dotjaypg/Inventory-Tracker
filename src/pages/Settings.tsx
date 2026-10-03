@@ -759,7 +759,7 @@ export default function SettingsPage() {
                       {unreturned.length === 1 ? "it is" : "they are"} returned
                       first in{" "}
                       <span className="font-medium">
-                        Requests &gt; Borrow Log &gt; Active
+                        Requests &gt; History Log &gt; Active
                       </span>
                       , or untick "Pull-out / borrow logs" to clear only
                       restock history.

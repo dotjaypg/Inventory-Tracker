@@ -87,11 +87,12 @@ inventory-app
     ├── lib
     │   ├── supabase.ts   Supabase connection
     │   ├── history.ts    When to show the "clear history" reminder
+    │   ├── report.ts     Report numbers + Excel export (Reports and Dashboard)
     │   └── notifications.ts  Builds the bell alerts (low stock, overdue, new)
     ├── context
     │   ├── AuthContext.tsx       Login, staff, PINs, roles
     │   └── InventoryContext.tsx  All database reads and writes
-    └── pages             One file per screen (Inventory, Requests, Restock, etc.)
+    └── pages             One file per screen (Dashboard, Inventory, AddItem, Requests, RestockPage, Employees, Reports, Settings)
 ```
 
 ## Recent fixes
@@ -107,6 +108,10 @@ inventory-app
 | Exported files had fixed names | Every export is now named `name-YYYY-MM-DD.csv` (e.g. `inventory-2026-10-04.csv`) using `datedFilename()` | `inventory-app > src > lib > csv.ts` |
 | Restock page was hard to use (form far below the list on phones, name typed by hand) | Items needing restock are listed first with a Restock button. Tapping opens a popup with +/- and quick-add buttons, shows "stock after", and records the logged-in staff automatically. | `inventory-app > src > pages > RestockPage.tsx` |
 | Import was split between Inventory and Settings, imported blindly, and created duplicates | One place: **Inventory > Import** opens a 3-step popup (download template, fill in, upload). Shows a preview before adding, skips items that already exist, and lists rows that need fixing. Template uses plain column names and accepts old files. | `inventory-app > src > components > ImportItemsModal.tsx`, `inventory-app > src > lib > csv.ts` |
+| History tab duplicated the Borrow Log | History tab removed. **Requests > History Log** (renamed from Borrow Log) now has search, Export, and total cost | `inventory-app > src > pages > Requests.tsx` |
+| Dashboard "Export Report" and Reports export buttons did nothing | All work now: Excel (CSV) report with summary, most used, costs, restock needs, borrowed items, all pull-outs, and damage. Reports also has Print / Save PDF. | `inventory-app > src > lib > report.ts` |
+| Reports and Employees were hard to read | Reports: period picker (this month / 3 months / all time), plain-language summary, explained charts. Employees: role explanations, visible role button, recent activity per person. | `inventory-app > src > pages > Reports.tsx`, `inventory-app > src > pages > Employees.tsx` |
+| Restock page | Recent restocks now sit beside the item list on bigger screens | `inventory-app > src > pages > RestockPage.tsx` |
 | Refreshing the page logged you out | Login now survives a refresh. You are logged out when the tab is closed, you click logout, or after 12 hours. | `inventory-app > src > context > AuthContext.tsx` |
 
 > **Using an existing database?** Run `inventory-app > supabase > fix-clear-history.sql` once in the SQL Editor (on both staging and production databases) or Clear History will keep failing.

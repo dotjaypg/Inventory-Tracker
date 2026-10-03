@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Package,
   ClipboardList,
-  History,
   Users,
   BarChart3,
   Settings as SettingsIcon,
@@ -24,7 +23,6 @@ import Inventory from "./pages/Inventory";
 import AddItem from "./pages/AddItem";
 import Requests from "./pages/Requests";
 import RestockPage from "./pages/RestockPage";
-import HistoryPage from "./pages/HistoryPage";
 import EmployeesPage from "./pages/Employees";
 import ReportsPage from "./pages/Reports";
 import SettingsPage from "./pages/Settings";
@@ -36,7 +34,6 @@ const ALL_NAV_ITEMS = [
   { label: "Inventory", icon: Package, adminOnly: false },
   { label: "Requests", icon: ClipboardList, adminOnly: false },
   { label: "Restock", icon: PackagePlus, adminOnly: false },
-  { label: "History", icon: History, adminOnly: false },
   { label: "Employees", icon: Users, adminOnly: true },
   { label: "Reports", icon: BarChart3, adminOnly: true },
   { label: "Settings", icon: SettingsIcon, adminOnly: true },
@@ -47,7 +44,6 @@ const STAFF_ALLOWED_PAGES = [
   "Add Item",
   "Requests",
   "Restock",
-  "History",
 ];
 
 export default function App() {
@@ -103,8 +99,6 @@ export default function App() {
         return <Requests />;
       case "Restock":
         return <RestockPage />;
-      case "History":
-        return <HistoryPage />;
       case "Employees":
         return isAdmin ? (
           <EmployeesPage setPage={setActivePage} />
@@ -129,9 +123,9 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden print:h-auto print:overflow-visible">
       <aside
-        className={`hidden md:flex ${sidebarCollapsed ? "w-16" : "w-56"} flex-shrink-0 bg-card border-r border-border flex-col transition-all duration-200`}
+        className={`hidden md:flex print:!hidden ${sidebarCollapsed ? "w-16" : "w-56"} flex-shrink-0 bg-card border-r border-border flex-col transition-all duration-200`}
       >
         <div
           className={`flex items-center gap-3 px-4 py-4 border-b border-border ${sidebarCollapsed ? "justify-center" : ""}`}
@@ -243,7 +237,7 @@ export default function App() {
 
       {/* Mobile slide-out drawer */}
       <aside
-        className={`md:hidden fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border flex flex-col transition-transform duration-200 ${
+        className={`md:hidden print:hidden fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border flex flex-col transition-transform duration-200 ${
           mobileNavOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -321,7 +315,7 @@ export default function App() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 bg-card border-b border-border flex items-center px-4 md:px-5 gap-3 md:gap-4 flex-shrink-0">
+        <header className="print:hidden h-14 bg-card border-b border-border flex items-center px-4 md:px-5 gap-3 md:gap-4 flex-shrink-0">
           <button
             onClick={() => setMobileNavOpen(true)}
             className="md:hidden p-1.5 -ml-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors flex-shrink-0"
@@ -335,7 +329,9 @@ export default function App() {
             <NotificationBell setPage={selectPage} />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto">{renderPage()}</main>
+        <main className="flex-1 overflow-y-auto print:overflow-visible">
+          {renderPage()}
+        </main>
       </div>
     </div>
   );

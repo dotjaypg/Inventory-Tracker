@@ -77,7 +77,9 @@ export default function RestockPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-5xl">
+    <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+      {/* Left: search + item list */}
+      <div className="space-y-4 min-w-0">
       {/* Search + filter */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -112,7 +114,7 @@ export default function RestockPage() {
       </div>
 
       {/* Item list: tap any row to restock it */}
-      <div className="bg-card rounded-xl border border-border shadow-sm divide-y divide-border overflow-hidden">
+      <div className="bg-card rounded-xl border border-border shadow-sm divide-y divide-border overflow-y-auto lg:max-h-[calc(100vh-12rem)]">
         {list.map((item) => (
           <button
             key={item.id}
@@ -145,13 +147,15 @@ export default function RestockPage() {
         )}
       </div>
 
-      {/* Recent restocks */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">
+      </div>
+
+      {/* Right: recent restocks, beside the list on bigger screens */}
+      <div className="lg:sticky lg:top-0">
+        <h3 className="text-sm font-semibold text-foreground mb-3 lg:mt-1.5">
           Recent restocks
         </h3>
-        <div className="bg-card rounded-xl border border-border shadow-sm divide-y divide-border overflow-hidden">
-          {restocks.slice(0, 10).map((r) => (
+        <div className="bg-card rounded-xl border border-border shadow-sm divide-y divide-border overflow-y-auto lg:max-h-[calc(100vh-12rem)]">
+          {restocks.slice(0, 20).map((r) => (
             <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <div className="text-sm font-medium text-foreground truncate">
