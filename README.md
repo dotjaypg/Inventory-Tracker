@@ -101,6 +101,7 @@ inventory-app
 | "Clear history" warning showed after just 1 pull-out | Now only shows when the oldest record is 30+ days old, or 30+ days after the last clear | `inventory-app > src > lib > history.ts` |
 | "Pulled Out" count on Employees stuck at 0 | Now counts by the staff account that was logged in during the pull-out | `inventory-app > src > pages > Employees.tsx` |
 | "Borrow Log" badge looked stuck at 0 | Not a bug: it only counts equipment not yet returned. Materials are logged as used up. Added a "not yet returned" tooltip. | `inventory-app > src > pages > Requests.tsx` |
+| Clear History could erase borrowed items that were not returned yet | Clear History is now blocked (in the app and in the database) until every borrowed item is returned | `inventory-app > src > pages > Settings.tsx`, `inventory-app > supabase > fix-clear-history.sql` |
 | Refreshing the page logged you out | Login now survives a refresh. You are logged out when the tab is closed, you click logout, or after 12 hours. | `inventory-app > src > context > AuthContext.tsx` |
 
 > **Using an existing database?** Run `inventory-app > supabase > fix-clear-history.sql` once in the SQL Editor (on both staging and production databases) or Clear History will keep failing.

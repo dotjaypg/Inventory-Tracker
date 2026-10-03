@@ -249,6 +249,10 @@ as $$
 begin
   -- "where id is not null" matches every row. Supabase blocks a DELETE that
   -- has no WHERE clause at all (safeupdate), which made Clear History fail.
+  -- Never erase the record of equipment that is still out.
+  if p_clear_logs and exists (select 1 from logs where status = 'active') then
+    raise exception 'Some borrowed items are not returned yet. Return them first, then clear history.';
+  end if;
   if p_clear_logs then
     delete from logs where id is not null;
   end if;

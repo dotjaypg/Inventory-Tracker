@@ -77,7 +77,14 @@ export default function SettingsPage() {
     oldestRecordDays,
   } = getClearReminder(lastClearedAt, logs, restocks);
 
+  // Borrowed items that have not come back yet. Clearing the borrow logs
+  // would erase the only record of who has them, so it is blocked until
+  // every one of these is returned.
+  const unreturned = logs.filter((l) => l.status === "active");
+  const blockedByUnreturned = clearLogsChecked && unreturned.length > 0;
+
   async function handleClearHistory() {
+    if (blockedByUnreturned) return;
     setClearBusy(true);
     setClearError("");
     const result = await clearHistory(clearLogsChecked, clearRestocksChecked);
@@ -725,6 +732,42 @@ export default function SettingsPage() {
                 </span>
               </label>
             </div>
+            {blockedByUnreturned && (
+              <div className="mb-4 p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-red-700 dark:text-red-300">
+                    <p className="font-semibold">
+                      Stop: {unreturned.length} borrowed item
+                      {unreturned.length === 1 ? " has" : "s have"} not been
+                      returned yet.
+                    </p>
+                    <p className="mt-1">
+                      Clearing now would erase the record of who has{" "}
+                      {unreturned.length === 1 ? "it" : "them"}. Make sure{" "}
+                      {unreturned.length === 1 ? "it is" : "they are"} returned
+                      first in{" "}
+                      <span className="font-medium">
+                        Requests &gt; Borrow Log &gt; Active
+                      </span>
+                      , or untick "Pull-out / borrow logs" to clear only
+                      restock history.
+                    </p>
+                    <ul className="mt-2 space-y-0.5">
+                      {unreturned.slice(0, 5).map((l) => (
+                        <li key={l.id}>
+                          • {l.item} ({l.qty} {l.unit}), {l.employee}, since{" "}
+                          {l.borrowDate}
+                        </li>
+                      ))}
+                      {unreturned.length > 5 && (
+                        <li>• and {unreturned.length - 5} more</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
             {clearError && (
               <p className="text-xs text-destructive mb-4">{clearError}</p>
             )}
@@ -739,7 +782,9 @@ export default function SettingsPage() {
               <button
                 onClick={handleClearHistory}
                 disabled={
-                  clearBusy || (!clearLogsChecked && !clearRestocksChecked)
+                  clearBusy ||
+                  blockedByUnreturned ||
+                  (!clearLogsChecked && !clearRestocksChecked)
                 }
                 className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >

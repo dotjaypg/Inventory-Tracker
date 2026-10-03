@@ -34,6 +34,10 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Never erase the record of equipment that is still out.
+  if p_clear_logs and exists (select 1 from logs where status = 'active') then
+    raise exception 'Some borrowed items are not returned yet. Return them first, then clear history.';
+  end if;
   if p_clear_logs then
     delete from logs where id is not null;
   end if;
