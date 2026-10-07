@@ -10,6 +10,7 @@ import { Staff } from "../types";
 
 interface AuthContextValue {
   staffList: Staff[];
+  staffListError: string | null;
   currentStaff: Staff | null;
   loading: boolean;
   refreshStaffList: () => Promise<Staff[]>;
@@ -78,22 +79,55 @@ function clearSession() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffListError, setStaffListError] = useState<string | null>(null);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refreshStaffList(): Promise<Staff[]> {
-    if (!supabase) return [];
-    const { data, error } = await supabase
-      .from("staff_public")
-      .select("*")
-      .order("name");
-    if (error || !data) return [];
-    setStaffList(data as Staff[]);
-    return data as Staff[];
+    if (!supabase) {
+      setStaffListError(
+        "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart or redeploy the app.",
+      );
+      setStaffList([]);
+      return [];
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("staff_public")
+        .select("*")
+        .order("name");
+      if (error) {
+        setStaffList([]);
+        setStaffListError(`Could not load staff accounts: ${error.message}`);
+        return [];
+      }
+      if (!data) {
+        setStaffList([]);
+        setStaffListError("Supabase returned no staff-list data.");
+        return [];
+      }
+
+      setStaffList(data as Staff[]);
+      setStaffListError(null);
+      return data as Staff[];
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "An unexpected network error occurred.";
+      setStaffList([]);
+      setStaffListError(`Could not load staff accounts: ${message}`);
+      return [];
+    }
   }
 
   useEffect(() => {
     async function init() {
+      console.log("Supabase Config Check:", {
+        isSupabaseConfigured,
+        url: import.meta.env.VITE_SUPABASE_URL,
+        key: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      });
+
       if (!isSupabaseConfigured) {
         setLoading(false);
         return;
@@ -210,6 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         staffList,
+        staffListError,
         currentStaff,
         loading,
         refreshStaffList,

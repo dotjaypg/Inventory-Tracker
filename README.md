@@ -53,7 +53,7 @@ This creates the default login **Admin / 0000**.
 3. Run `npm run dev`, open http://localhost:5173, log in as **Admin / 0000**.
 4. **Settings > Staff & PINs**: change the Admin PIN and add staff.
 
-> Login shows no names or the app shows demo data? Your `.env` is wrong. Fix it and restart `npm run dev`.
+> Login reports a staff-list error or the app shows demo data? Check that the `.env` URL and anon key point to the correct Supabase project, then restart `npm run dev` (or redeploy). If the login says there are no staff accounts, verify that the `staff_public` view has rows. Only use `schema.sql` for a new project; it deletes existing data.
 
 ## Step 4: Deploy (Vercel)
 

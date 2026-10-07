@@ -4,11 +4,12 @@ import { useAuth } from "../context/AuthContext";
 import Avatar from "../components/Avatar";
 
 export default function Login() {
-  const { staffList, login } = useAuth();
+  const { staffList, staffListError, login, refreshStaffList } = useAuth();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   // Support a QR-code deep link like  yourapp.com/?staff=<id>  that
   // pre-selects a person so they just scan and type their PIN.
@@ -47,9 +48,33 @@ export default function Login() {
           {!selected ? (
             <>
               <h2 className="text-sm font-semibold text-foreground mb-4">Who are you?</h2>
-              {staffList.length === 0 ? (
+              {staffListError ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-destructive">{staffListError}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Check the Supabase URL and key, and confirm the
+                    {" "}staff_public view exists. For a new project, run
+                    {" "}supabase/schema.sql. Do not run it on an existing
+                    database; it deletes existing data.
+                  </p>
+                  <button
+                    onClick={async () => {
+                      setRetrying(true);
+                      await refreshStaffList();
+                      setRetrying(false);
+                    }}
+                    disabled={retrying}
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {retrying ? "Checking…" : "Try again"}
+                  </button>
+                </div>
+              ) : staffList.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No staff accounts yet. Run the schema.sql in your Supabase project — it seeds a default Admin account.
+                  No staff accounts found. If this is a new project, run
+                  {" "}supabase/schema.sql in Supabase to set it up and seed
+                  the default Admin account. Do not run it on an existing
+                  database; it deletes existing data.
                 </p>
               ) : (
                 <div className="space-y-1.5 max-h-72 overflow-y-auto">

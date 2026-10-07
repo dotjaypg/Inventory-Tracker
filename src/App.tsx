@@ -30,6 +30,8 @@ import SettingsPage from "./pages/Settings";
 import Avatar from "./components/Avatar";
 import NotificationBell from "./components/NotificationBell";
 
+console.error("Vite Env Check:", import.meta.env);
+
 const ALL_NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
   { label: "Inventory", icon: Package, adminOnly: false },
